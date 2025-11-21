@@ -94,14 +94,20 @@ class DES_EI(AnalyticAcquisitionFunction):
             given design points `X`.
         """
         self.to(device=X.device)  # ensures buffers / parameters are on the same device
-        
+        # print('X in shape \n')
+        # print(X.shape)
+
         #TODO Implement code to account for unknown dimensions.
-        N = X[...,-1].unsqueeze(-1) #Assumes n input is the extra dimension
-        X = X[...,:-1]
-        
+        N = X[...,-1].flatten() #Assumes n input is the extra dimension
+        X_in = X[...,:-1]
+        # print('\n N shape \n')
+        # print(N.shape)
+
+        # print('\n X shape \n')
+        # print(X_in.shape)
         #Calculate Posterior of noise model for variance predictions
         posterior_eps = self.model_eps.posterior(
-            X=X, posterior_transform=self.posterior_transform, observation_noise= False,
+            X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
         )
 
         #Calculate predicted variance \sigma_eps^2
@@ -109,10 +115,12 @@ class DES_EI(AnalyticAcquisitionFunction):
 
         #Calculates posterior for latent function f
         posterior_f = self.model.posterior(
-            X=X, posterior_transform=self.posterior_transform, observation_noise= False,
+            X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
         )
         # Calculate predicted f and \sigma_f^2
         mean = posterior_f.mean.squeeze(-2).squeeze(-1) 
+        # print('mean shape is')
+        # print(mean.shape)
         sigma_2_f = posterior_f.variance.clamp_min(1e-12).view(mean.shape)
 
         u = _scaled_improvement(mean, sigma_2_f.sqrt(), self.best_f, self.maximize)
@@ -123,7 +131,7 @@ class DES_EI(AnalyticAcquisitionFunction):
         #Calculate query cost
         query_cost = self.cost_model(N)
 
-        return sigma_2_f.sqrt() * _ei_helper(u) * penalty * query_cost
+        return (sigma_2_f.sqrt() * _ei_helper(u) * penalty * query_cost).squeeze(-1)
 
 class AEI_fq(AnalyticAcquisitionFunction):
     r"""Single-outcome conservative posterior mean i.e.

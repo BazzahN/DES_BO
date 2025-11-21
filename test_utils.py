@@ -77,8 +77,8 @@ class InverseLinearCostModel(DeterministicModel):
             Cost evaluation at points in n
         
         '''
-
-        return self.lin_coeffs[0]*N + self.lin_coeffs[1]
+        cost = 1/(self.lin_coeffs[0]*N + self.lin_coeffs[1])
+        return cost
 
 #TODO Linear Regression linear cost model
 '''
