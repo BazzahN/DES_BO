@@ -680,11 +680,11 @@ for t in range(0,T):
 
     # Acquire best point
     ## Current Method: Optimsie Conservative PostMean
-    acq_strat_SEI = PosteriorMean(sk_model['f'],maximize=MAXIMIZE) 
-    f_str_SEI = f_best_acq(acq_strat_SEI,bounds=x_bounds) #f* as posteriormin
-    # acq_strat_AEI = AEI_fq(sk_model['f'],maximize=MAXIMIZE)
-    # f_str_AEI = f_best_acq(acq_strat_AEI,bounds=x_bounds)
-    f_best = f_str_SEI
+    # acq_strat_SEI = PosteriorMean(sk_model['f'],maximize=MAXIMIZE) 
+    # f_str_SEI = f_best_acq(acq_strat_SEI,bounds=x_bounds) #f* as posteriormin
+    acq_strat_AEI = AEI_fq(sk_model['f'],maximize=MAXIMIZE)
+    f_str_AEI = f_best_acq(acq_strat_AEI,bounds=x_bounds)
+    f_best = f_str_AEI
     f_bests.append(f_best.unsqueeze(-1))
     print(f'Current $f^*$={f_best.item()}')
 
@@ -732,7 +732,7 @@ for t in range(0,T):
           f'x={new_x.item()}|n={new_n.item()}|y={new_y.item()}\n')
     
 t= t+1
-plot_iter_output(N_points,train_x,train_y,sk_model,f'Iteration {t}',n_dir+'GP_plot_' + str(t) + '.png',np_toggle)
+plot_iter_output(N_points,train_x,train_y,sk_model,f'Iteration {t}|x={new_x.item()}|n={new_n.item()}',n_dir+'GP_plot_' + str(t) + '.png',np_toggle)
 plot_in_uncertainty(N_points,sk_model,f'Noise|iter {t}',n_dir+'Noise_plot_' + str(t) + '.png','b')
 plot_ex_uncertainty(N_points,sk_model,f'Uncertainty|iter {t}',n_dir+'Uncer_plot_' + str(t) + '.png','r')
 plot_AF(N_points,AEI,3,f'AF| iter {t}',n_dir+'AF_plot_' + str(t) + '.png','g')
