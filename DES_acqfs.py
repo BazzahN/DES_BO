@@ -41,7 +41,7 @@ def _noise_var_penalty(sigma_2_eps,sigma_2_f,n):
     
     This penalises points with high noise
     '''
-    ratio = sigma_2_eps.sqrt()/(sigma_2_eps + sigma_2_f*n)
+    ratio = sigma_2_eps.sqrt()/torch.sqrt(sigma_2_eps + sigma_2_f*n)
 
     return 1 - ratio
 
@@ -127,7 +127,6 @@ class DES_EI(AnalyticAcquisitionFunction):
 
         #Calculate penalty 
         penalty = _noise_var_penalty(sigma_2_eps,sigma_2_f,N)
-
         #Calculate query cost
         query_cost = self.cost_model(N)
 
