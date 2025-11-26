@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import time
 from PIL import Image
-import imageio
+# import imageio
 
 # --- CONFIG ---
 IMAGE_DIR = "images"
@@ -126,18 +126,18 @@ if play:
 if pause:
     st.session_state["stop"] = True
 
-# --- EXPORT GIF/MP4 ---
-st.sidebar.header("Export Animation")
-export = st.sidebar.button("Export GIF 🎞️")
+# # --- EXPORT GIF/MP4 ---
+# st.sidebar.header("Export Animation")
+# export = st.sidebar.button("Export GIF 🎞️")
 
-if export:
-    frames = []
-    for i in range(0, max_iter + 1):
-        path = os.path.join(IMAGE_DIR, f"{prefix}{i}.png")
-        if os.path.exists(path):
-            frames.append(Image.open(path))
-    gif_path = f"{prefix}_animation.gif"
-    imageio.mimsave(gif_path, frames, fps=int(1/speed))
-    st.sidebar.success(f"Exported: {gif_path}")
-    with open(gif_path, "rb") as f:
-        st.sidebar.download_button("Download GIF", f, file_name=gif_path)
+# if export:
+#     frames = []
+#     for i in range(0, max_iter + 1):
+#         path = os.path.join(IMAGE_DIR, f"{prefix}{i}.png")
+#         if os.path.exists(path):
+#             frames.append(Image.open(path))
+#     gif_path = f"{prefix}_animation.gif"
+#     imageio.mimsave(gif_path, frames, fps=int(1/speed))
+#     st.sidebar.success(f"Exported: {gif_path}")
+#     with open(gif_path, "rb") as f:
+#         st.sidebar.download_button("Download GIF", f, file_name=gif_path)
