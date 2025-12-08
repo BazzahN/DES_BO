@@ -177,3 +177,95 @@ def plot_gp_preds(test_x,train_x,train_y,preds):
         ax.fill_between(test_x.numpy(), lower.numpy(), upper.numpy(), alpha=0.5)
         # ax.set_ylim([-3, 3])
         ax.legend(['Observed Data', 'Mean','True', 'Confidence'])
+
+# ub1 = 3
+# test_n = torch.ones_like(test_x) * ub1
+# X_1 = torch.cat([test_x.unsqueeze(-1),test_n.unsqueeze(-1)],axis=1).unsqueeze(1)
+
+# EI_vals = AEI(X_1)
+
+# ub2 = 10
+# test_n = torch.ones_like(test_x) * ub2
+# X_2 = torch.cat([test_x.unsqueeze(-1),test_n.unsqueeze(-1)],axis=1)
+
+# print(f'penalised EI with n={ub1}')
+# EI_vals_1 = EI(X_1)
+
+# print(f'penalised EI with n={ub2}')
+# EI_vals_2 = EI(X_2)
+
+
+# with torch.no_grad():
+#     f, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+#     ax.plot(test_x,EI_vals_1)
+#     ax.plot(test_x,EI_vals_2)
+#     ax.legend([f'ub {ub1}',f'ub {ub2}'])
+
+## Mixed space optimise
+
+# N = [3,5,10,20,30,50,60,70]
+
+# replications = [{1:i} for i in N]
+
+# candidates, acq_val = optimize_acqf_mixed(AEI,
+#                                           bounds = bounds,
+#                                           q = 1,
+#                                           fixed_features_list=replications,
+#                                           num_restarts=25,
+#                                           raw_samples=500)
+
+#Random x generation
+# train_x = torch.rand(k)
+# train_x = train_x.sort()[0] #Sort values for ploting
+
+# def plot_AF(N_points,
+#             AF,
+#             n_vals = torch.tensor([3,5,10]),
+#             fig_title=None,
+#             f_name=None,
+#             colour = 'b'):
+#     '''
+#     Plots the predicted intrinsic uncertainty (sigma^2_eps) and extrinsic uncertainty (sigma^2_f)
+#     of the Gaussian Process at a give iteration
+
+#     Inputs
+#     ------
+#         N_points: Tensor
+#             Number of grid points to make prediction
+#         AF: AcquisitionFunction
+#             An initalised Acquisition Function
+#         n_vals: int Tensor
+#             Chosen n value 
+#         fig_title: String Optional[Default=None] 
+#             Title of the figure if needed.
+#         f_name: String Optional[Default=None]
+#             If a filename string is supplied the generated figure will be automatically saved under
+#             that name. Format must be supplied in f_name i.e. .png or .eps
+#         new_point: bool Optional[Default=False]
+#             Highlights the selected candidate if set to true
+#     '''
+
+#     AF_vals = AF_output(N_points,
+#                         AF,
+#                         n_vals)
+
+
+#     with torch.no_grad():
+#             # Initialize plot
+#             f, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+#             ax.plot(test_x,AF_vals,colour,label='$AF(x)$')
+
+#             ax.set_xlabel('$x$')
+#             ax.set_ylabel('$AF(x)$')
+            
+#             ax.legend()
+#             if fig_title is not None:
+#                 ax.set_title(fig_title)
+        
+
+#     if f_name is not None:
+#         plt.savefig(f_name, dpi=500,bbox_inches = "tight")
+    
+#     plt.show()

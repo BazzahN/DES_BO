@@ -27,9 +27,9 @@ def test_function(x):
         Evaluation of the test function
     '''
 
-    return torch.sin(5*x) + torch.cos(7*x) 
+    return -(torch.sin(5*x) + torch.cos(7*x)) 
 
-def noise_function(x,sigma2_0,phi = 0):
+def heteroscedastic_noise(x,sigma2_0,phi = 0):
     '''
     Plots the underlying heteroscedastic noise surface for the test problem,
     defined as:
@@ -48,6 +48,20 @@ def noise_function(x,sigma2_0,phi = 0):
     x = x - phi
     return (0.5 * torch.cos(2*torch.pi*x) + 1)* sigma2_0
 
+def flat_noise(x,sigma2_0,phi=0):
+    '''
+    Plots the underlying homoscedastic noise surface for the test problem,
+    defined as:
+    \sigma_eps(x) = sigma2_0
+
+    Inputs
+    ------
+    x: tensor
+        The test/train locations for the GP. Here x \in [0,1]
+    sigma_0: float
+        Scale of the heteroscedastic noise function
+    '''
+    return sigma2_0 *torch.ones_like(x)
 
 from botorch.models.deterministic import DeterministicModel
 

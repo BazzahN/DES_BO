@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-from test_utils import test_function, noise_function,InverseLinearCostModel
+from test_utils import test_function, heteroscedastic_noise,flat_noise,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
@@ -11,22 +11,27 @@ tkwargs = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
 }
+seed = 12345
+
+torch.manual_seed(seed)
 
 #GLOBALS
-SIGMA2 = 5 #Scale of noise surface
+SIGMA2 = 1 #Scale of noise surface
+PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
 # Constants
-k = 10 #number of samples points
-n = 3 #flat number of replications
+k = 5 #number of samples points
+n = 5 #flat number of replications
 
 #Generate decision variables
 #NOTE: Random train_x code moved to stoch_kriging
-train_x = torch.linspace(0,1,k).to(**tkwargs)
+train_x = torch.linspace(0.1,1,k).to(**tkwargs)
 train_n = torch.ones_like(train_x) * n
 
 #Calculate sigma^2(x)
-sigma2_vec = noise_function(train_x,SIGMA2).to(**tkwargs)
+noise_function = flat_noise
+sigma2_vec = noise_function(train_x,SIGMA2,PHI).to(**tkwargs)
 
 # Calculate sample variance
 s2_vec = sigma2_vec / train_n
@@ -38,7 +43,7 @@ train_y = test_function(train_x).to(**tkwargs) + noise
 #Plot Test Function
 N_points=500
 test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-true_sig2 = noise_function(test_x,SIGMA2).to(**tkwargs)
+true_sig2 = noise_function(test_x,SIGMA2,PHI).to(**tkwargs)
 true_sig = true_sig2.sqrt()
 true_y = test_function(test_x)
 
@@ -73,24 +78,7 @@ ax[1].legend()
 plt.savefig('BODES_test_problem.png',dpi=500,bbox_inches = 'tight')
 plt.show()
 
-#SNR - Signal to noise ratio
-'''
-Defined as the ratio SNR = \mu/\sigma or SNR = \mu^2/\sigma^2
-'''
-SNR = true_y**2/true_sig2 # Calculate change in SNR for this problem
-f,ax = plt.subplots(1,1,figsize=(8,6))
-
-ax.plot(test_x,SNR,label='SNR')
-ax.plot(optim_sol,SNR[optim_idx],'k*',label='optmal point')
-ax.set_xlabel('$x$')
-ax.set_ylabel('SNR(x)')
-ax.set_title('Signal to noise ratio of test function')
-ax.legend()
-plt.savefig('BODES_tp_SNR.png',dpi=500,bbox_inches = 'tight')
-plt.show()
-
-
-def get_new_y_and_sigma(x,n,sigma2 = SIGMA2):
+def get_new_y_and_sigma(x,n,sigma2 = SIGMA2,phi = PHI):
     '''
     Calculates an evaluation of the noisy test function used to represent the output from a real heteroscedastic
     simulation. 
@@ -104,7 +92,7 @@ def get_new_y_and_sigma(x,n,sigma2 = SIGMA2):
         sigma2: Optional sigma2 = SIGMA2 - Global assignment of variable in home script
             Used as argument to the toy function to scale noise. 
     '''
-    sigma2_vec = noise_function(x,sigma2).to(**tkwargs)
+    sigma2_vec = noise_function(x,sigma2,phi).to(**tkwargs)
 
     # Calculate sample variance
     s2_vec = sigma2_vec / n
@@ -119,6 +107,7 @@ train_x = train_x.reshape(k,1)
 train_n = train_n.reshape(k,1)
 train_y, train_sigma2 = get_new_y_and_sigma(train_x,train_n)
 
+from gpytorch.likelihoods.gaussian_likelihood import FixedNoiseGaussianLikelihood
 
 def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     '''
@@ -146,12 +135,17 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     
     '''
 
-    s2 = sigma2_hat / train_n #Sample variance transform
+    #Include observational noise on f hyperparamter 
+    ## This is done by setting
+
+    s2 = (sigma2_hat / train_n).view(-1, 1) #Sample variance transform
     #Fit main Model
     gp = SingleTaskGP(train_x,
                       train_y,
                       train_Yvar=s2,
-                      outcome_transform=None)
+                      outcome_transform=None,
+                      #add_noise=True,
+                      )
 
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
     fit_gpytorch_mll(mll)
@@ -224,14 +218,16 @@ def plot_GP(test_x,
             #Plot new point as red star
             ax.plot(new_x.numpy(),new_y.numpy(),'r*',label='New Point')
         # Get upper and lower confidence bounds
-        lower, upper = posterior_distb.confidence_region()
+        # lower, upper = posterior_distb.confidence_region()
+        lower = posterior_distb.mean - posterior_distb.variance.sqrt()
+        upper = posterior_distb.mean + posterior_distb.variance.sqrt()
         # Plot training data as black stars
         ax.plot(train_x.numpy(), train_y.numpy(), 'k*',label='Evaluations')
         # Plot predictive means as blue line
         ax.plot(test_x.numpy(), posterior_distb.mean.numpy(), 'b',label='Mean')
         ax.plot(test_x,true_y,'r',label='True')
         # Shade between the lower and upper confidence bounds
-        ax.fill_between(test_x.numpy(), lower.numpy(), upper.numpy(), alpha=0.5,label='CI')
+        ax.fill_between(test_x.numpy(), lower.flatten().numpy(), upper.flatten().numpy(), alpha=0.5,label='1 sigma')
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
         
@@ -244,6 +240,169 @@ def plot_GP(test_x,
         plt.savefig(f_name, dpi=500,bbox_inches = "tight")
 
     plt.show()        
+
+# def poster_plot(N_points,
+#                 train_x,
+#                 train_y,
+#                 acqf,
+#                 n_vals,
+#                 model,
+#                 phi = 0,
+#                 theta=1,
+#                 fig_title=None,
+#                 f_name=None,
+#                 new_point=False):
+   
+#     #Generate true outptu and predictions
+#     test_x = torch.linspace(0,1,N_points).to(**tkwargs)
+#     true_y = test_function(test_x)
+#     preds = model['f'].posterior(test_x,observation_noise=False) 
+    
+#     x,y = AF_output(N_points,
+#                     acqf,
+#                     n_vals)
+
+#     with torch.no_grad():
+#         # Initialize plot
+#         f, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+#         if new_point:
+#             new_x = train_x[-1]
+#             new_y = train_y[-1]
+#             #Removes new points to avoid repetition
+#             #NOTE: This might not matter if being called first 
+#             train_x = train_x[:-1]
+#             train_y = train_y[:-1]
+#             #Plot new point as red star
+#             candidate = ax.plot(new_x.numpy(),new_y.numpy(),'r*',label='New Point')
+        
+#         # Get upper and lower confidence bounds
+#         # lower, upper = posterior_distb.confidence_region()
+#         lower = preds.mean - preds.variance.sqrt()
+#         upper = preds.mean + preds.variance.sqrt()
+        
+#         # Plot training data as black stars
+#         evidence = ax.plot(train_x.numpy(), train_y.numpy(), 'k*',label='Evaluations')
+#         # Plot predictive means as blue line
+#         predictions =ax.plot(test_x.numpy(), preds.mean.numpy(), 'b',label='Mean')
+#         truth = ax.plot(test_x,true_y,'r',label='True')
+#         # Shade between the lower and upper confidence bounds
+#         unertainty = ax.fill_between(test_x.numpy(), lower.flatten().numpy(), upper.flatten().numpy(), alpha=0.5,label='1 sigma')
+        
+#         Gp_lines = 
+#         for i, n in enumerate(n_vals):
+#             ax.plot(x,theta*y[i] -phi,label=f"n={n}")
+#         ax.set_xlabel('$x$')
+#         ax.set_ylabel('$y$')
+        
+#         ax.legend([''])
+#         if fig_title is not None:
+#             ax.set_title(fig_title)
+        
+
+#     if f_name is not None:
+#         plt.savefig(f_name, dpi=500,bbox_inches = "tight")
+
+#     plt.show()        
+
+
+def poster_plot(
+    N_points,
+    train_x,
+    train_y,
+    acqf,
+    n_vals,
+    model,
+    phi=0,
+    theta=1,
+    fig_title=None,
+    f_name=None,
+    new_point=False,
+):
+    # Generate test points
+    test_x = torch.linspace(0, 1, N_points).to(**tkwargs)
+
+    # Generate true output and predictions
+    true_y = test_function(test_x)
+    preds = model['f'].posterior(test_x, observation_noise=False)
+
+    # Acquisition function output
+    x, y = AF_output(N_points, acqf, n_vals)
+
+    with torch.no_grad():
+        # Initialize plot
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+        # Handle "new point"
+        if new_point:
+            new_x = train_x[-1]
+            new_y = train_y[-1]
+            train_x = train_x[:-1]
+            train_y = train_y[:-1]
+            ax.plot(new_x.cpu().numpy(), new_y.cpu().numpy(), 'r*', label='New Point')
+
+        # Confidence bounds
+        mean = preds.mean.squeeze(-1)
+        std = preds.variance.sqrt().squeeze(-1)
+        lower = mean - std
+        upper = mean + std
+
+        # ---- Gaussian Process plots ----
+        gp_lines = []
+
+        gp_lines += ax.plot(train_x.cpu().numpy(), train_y.cpu().numpy(), 'k*', label='Data')
+        gp_lines += ax.plot(test_x.cpu().numpy(), mean.cpu().numpy(), 'b', label='Mean')
+        gp_lines += ax.plot(test_x.cpu().numpy(), true_y.cpu().numpy(), 'r', label='True')
+        gp_lines.append(
+            ax.fill_between(
+                test_x.cpu().numpy(),
+                lower.cpu().numpy(),
+                upper.cpu().numpy(),
+                alpha=0.3,
+                label='1σ'
+            )
+        )
+
+        # ---- Acquisition Function plots ----
+        af_lines = []
+        for i, n in enumerate(n_vals):
+            line, = ax.plot(x, theta * y[i] - phi, label=f"n={n}")
+            af_lines.append(line)
+
+        ax.set_xlabel('$x$')
+        ax.set_ylabel('$y$')
+
+        if fig_title is not None:
+            ax.set_title(fig_title)
+
+        # ---- Create separate legends ----
+        gp_legend = ax.legend(
+            handles=gp_lines,
+            title="GP",
+            loc='upper left',
+            bbox_to_anchor=(1.02, 1.0),
+            borderaxespad=0
+        )
+
+        af_legend = ax.legend(
+            handles=af_lines,
+            title="AF",
+            loc='upper left',
+            bbox_to_anchor=(1.02, 0.6),
+            borderaxespad=0.
+        )
+
+        # Add the first legend back manually
+        ax.add_artist(gp_legend)
+
+        # Leave space on the right for legends
+        # plt.tight_layout(rect=[0, 0, 0.75, 1])
+
+    # Save figure if requested
+    if f_name is not None:
+        plt.savefig(f_name, dpi=500, bbox_inches="tight")
+
+    plt.show()
 
 
 #Constants
@@ -468,9 +627,51 @@ def plot_imporv(N_points,
     
     plt.show()
 
+
+def AF_output(N_points,
+              acqf,
+              n_vals,
+              ):
+    '''
+    Caluclates the AF output and returns a len(n_vals)x N_points tensor of AF values for
+    each n choice in n_vals.
+
+    Inputs
+    ------
+        N_points: Tensor
+            Number of grid points to make prediction
+        acqf: AcquisitionFunction
+            An initalised Acquisition Function
+        n_val: int Tensor
+            Chosen n value 
+    Returns
+    -------
+        test_x: Tensor
+            Test grid on which values were evaluated
+        AF_vals: len(n_vals)xN_points sized tensor
+            Evaluated AF values
+    '''
+
+    #Generate test points
+    test_x = torch.linspace(0,1,N_points).to(**tkwargs)
+
+    # Build X
+    X = torch.stack([
+        test_x.repeat(len(n_vals)),          # column 0
+        n_vals.repeat_interleave(len(test_x))  # column 1
+    ], dim=1)
+    
+    AF_vals = acqf(X)
+
+    T = len(test_x)
+    N = len(n_vals)
+    return test_x, AF_vals.reshape(N,T)
+
+
+
 def plot_AF(N_points,
             AF,
-            n_val = 3,
+            n_vals = torch.tensor([3,5,10]),
             fig_title=None,
             f_name=None,
             colour = 'b'):
@@ -484,7 +685,7 @@ def plot_AF(N_points,
             Number of grid points to make prediction
         AF: AcquisitionFunction
             An initalised Acquisition Function
-        n_val: int Tensor
+        n_vals: int Tensor
             Chosen n value 
         fig_title: String Optional[Default=None] 
             Title of the figure if needed.
@@ -495,27 +696,24 @@ def plot_AF(N_points,
             Highlights the selected candidate if set to true
     '''
 
-    #Generate test points
-
-    test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-    test_n = torch.ones_like(test_x) * n_val
-    X_1 = torch.cat([test_x.unsqueeze(-1),test_n.unsqueeze(-1)],axis=1).unsqueeze(1)
-    
-    AF_vals = AF(X_1)
+    x,y = AF_output(N_points,
+                    AF,
+                    n_vals)
 
 
     with torch.no_grad():
-            # Initialize plot
-            f, ax = plt.subplots(1, 1, figsize=(8, 6))
+        # Initialize plot
+        plt.figure(figsize=(6,4))
 
-            ax.plot(test_x,AF_vals,colour,label='$AF(x)$')
+        for i, n in enumerate(n_vals):
+            plt.plot(x,y[i],label=f"n={n}")
 
-            ax.set_xlabel('$x$')
-            ax.set_ylabel('$AF(x)$')
-            
-            ax.legend()
-            if fig_title is not None:
-                ax.set_title(fig_title)
+        plt.xlabel('$x$')
+        plt.ylabel('$AF(x)$')
+        
+        plt.legend()
+        if fig_title is not None:
+            plt.title(fig_title)
         
 
     if f_name is not None:
@@ -635,14 +833,14 @@ Linear cost function is:
 c(n) = 1/(ax+b)
 where a and b are the linear coeffs
 '''
-a = 0.1
-b = 1.5
+a = 0.5
+b = 2
 lin_cost_func = InverseLinearCostModel([a,b])
 
 ## Define f^*
 
 # f_str = train_y.min() #f* as current best
-# f_str_AEI = f_best_acq(acq_strat_AEI,bounds=x_bounds) #f* as convervative posteriorMin
+# f_str_AEI = f_best_acq(acq_strat_AEI,bounds=X_BOUNDS) #f* as convervative posteriorMin
 
 # ## Define Acquisition Function
 
@@ -660,7 +858,7 @@ bounds = torch.tensor([[0,3] * 1,
                         dtype=torch.double,
                         device=torch.device("cpu")) # Bounds of combined X and N space
 
-x_bounds = torch.tensor([[0] * 1,
+X_BOUNDS = torch.tensor([[0] * 1,
                         [1] * 1],
                         dtype=torch.double,
                         device=torch.device("cpu")) # Bounds of combined X and N space
@@ -670,9 +868,98 @@ x_bounds = torch.tensor([[0] * 1,
 
 # BO Optimisation Looop
 n_dir = 'images/'
-T = 10
+T = 5
 AF_vals = []
 f_bests =[]
+
+class run_DES_exp_itr:
+
+    def __init__(self,
+                 AF,
+                 f_best_strat,
+                 model_call_func,
+                 run_sim):
+
+        r"""Single iteration of BODES
+            Args:
+                AF: AnalyticalAcquisition Function Type
+                    candidate sets X will be)
+                posterior_transform: A PosteriorTransform. If using a multi-output model,
+                    a PosteriorTransform that transforms the multi-output posterior into a
+                    single-output posterior is required.
+                maximize: If True, consider the problem a maximization problem. Note
+                    that if `maximize=False`, the posterior mean is negated. As a
+                    consequence `optimize_acqf(PosteriorMean(gp, maximize=False))`
+                    actually returns -1 * minimum of the posterior mean.
+            """
+        self.AF = AF
+        self.f_best_strat = f_best_strat
+        self.model_call_func = model_call_func
+        self.run_sim = run_sim #y,sigma2 =func(x,n)
+    
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2):
+        
+        f_best = self.f_best_strat(model)
+
+        #Initialise AF for candidate selection
+        AF = self.AF(model_f=model['f'],
+                     model_eps=model['eps'],
+                     best_f=f_best, #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
+                     cost_model=lin_cost_func,
+                     maximize=MAXIMIZE) #Define Cost aware and penalised EI
+
+        ## Optimise AF and get candidates
+        xn_new, _ = candidate_acq(AF,bounds)
+
+        ## Update Dataset
+        new_x = xn_new[0,0].reshape(1,1)
+        new_n = xn_new[0,1].reshape(1,1)
+        new_y, new_sigma2 = self.run_sim(new_x,new_n)
+
+        train_x = torch.cat([train_x,new_x])
+        train_n = torch.cat([train_n,new_n])
+        train_y = torch.cat([train_y,new_y])
+        train_sigma2 = torch.cat([train_sigma2,new_sigma2])
+
+        ## Re-condtion model
+        model = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+
+        return model, train_x, train_n, train_y, train_sigma2
+
+
+def get_best_fs_AEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
+
+    acq_strat_AEI = AEI_fq(model['f'],maximize=maximise)
+    f_best = f_best_acq(acq_strat_AEI,bounds=bounds)
+
+    return f_best
+
+BODES = run_DES_exp_itr(DES_EI,
+                        get_best_fs_AEI,
+                        get_stoch_kriging_model,
+                        get_new_y_and_sigma)
+
+def get_best_f_SEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
+
+    #Posterior MEaximise
+    acq_strat_SEI = PosteriorMean(model['f'],maximize=maximise) 
+    f_best = f_best_acq(acq_strat_SEI,bounds=bounds) #f* as posteriormin
+
+    return f_best
+
+
+
+
+
+#Iteration Funciton
+sk_model,train_x,train_n,train_y,train_sigma2 = BODES.run_iter(sk_model,
+                                                               train_x,
+                                                               train_n,
+                                                               train_y,
+                                                               train_sigma2)
+
+#Best f_acqf
+f_best_SEI = get_best_f_SEI(sk_model)
 
 
 for t in range(0,T): 
@@ -680,13 +967,16 @@ for t in range(0,T):
 
     # Acquire best point
     ## Current Method: Optimsie Conservative PostMean
-    # acq_strat_SEI = PosteriorMean(sk_model['f'],maximize=MAXIMIZE) 
-    # f_str_SEI = f_best_acq(acq_strat_SEI,bounds=x_bounds) #f* as posteriormin
-    acq_strat_AEI = AEI_fq(sk_model['f'],maximize=MAXIMIZE)
-    f_str_AEI = f_best_acq(acq_strat_AEI,bounds=x_bounds)
-    f_best = f_str_AEI
+    acq_strat_SEI = PosteriorMean(sk_model['f'],maximize=MAXIMIZE) 
+    f_str_SEI = f_best_acq(acq_strat_SEI,bounds=X_BOUNDS) #f* as posteriormin
+    f_best = f_str_SEI
     f_bests.append(f_best.unsqueeze(-1))
     print(f'Current $f^*$={f_best.item()}')
+    #Conservative Best
+    acq_strat_AEI = AEI_fq(sk_model['f'],maximize=MAXIMIZE)
+    f_str_AEI = f_best_acq(acq_strat_AEI,bounds=X_BOUNDS)
+    f_best = f_str_AEI
+    
 
     #Initialise AF for candidate selection
     AEI = DES_EI(model_f=sk_model['f'],
@@ -709,7 +999,7 @@ for t in range(0,T):
     plot_iter_output(N_points,train_x,train_y,sk_model,title,n_dir+'GP_plot_' + str(t) + '.png',np_toggle)
     plot_in_uncertainty(N_points,sk_model,f'Noise|iter {t}',n_dir+'Noise_plot_' + str(t) + '.png','b')
     plot_ex_uncertainty(N_points,sk_model,f'Uncertainty|iter {t}',n_dir+'Uncer_plot_' + str(t) + '.png','r')
-    plot_AF(N_points,AEI,3,f'AF| iter {t}',n_dir+'AF_plot_' + str(t) + '.png','g')
+    plot_AF(N_points,AEI,torch.tensor([3,5,10,50]),f'AF| iter {t}',n_dir+'AF_plot_' + str(t) + '.png','g')
     plot_imporv(N_points,f_best,sk_model,f'improv|iter {t}',n_dir+'improv_plot_' + str(t) + '.png','y') 
     
     ## Update Dataset
@@ -735,7 +1025,7 @@ t= t+1
 plot_iter_output(N_points,train_x,train_y,sk_model,f'Iteration {t}|x={new_x.item()}|n={new_n.item()}',n_dir+'GP_plot_' + str(t) + '.png',np_toggle)
 plot_in_uncertainty(N_points,sk_model,f'Noise|iter {t}',n_dir+'Noise_plot_' + str(t) + '.png','b')
 plot_ex_uncertainty(N_points,sk_model,f'Uncertainty|iter {t}',n_dir+'Uncer_plot_' + str(t) + '.png','r')
-plot_AF(N_points,AEI,3,f'AF| iter {t}',n_dir+'AF_plot_' + str(t) + '.png','g')
+plot_AF(N_points,AEI,torch.tensor([3,5,10,50]),f'AF| iter {t}',n_dir+'AF_plot_' + str(t) + '.png','g')
 plot_imporv(N_points,f_best,sk_model,f'improv|iter {t}',n_dir+'improv_plot_' + str(t) + '.png','y')
 
 AF_vals = torch.cat(AF_vals)
