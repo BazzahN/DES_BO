@@ -10,6 +10,7 @@ Including
 
 '''
 import torch
+import numpy as np
 from torch import Tensor
 
 def test_function(x):
@@ -27,7 +28,17 @@ def test_function(x):
         Evaluation of the test function
     '''
 
-    return -(torch.sin(5*x) + torch.cos(7*x)) 
+    return (torch.sin(5*x) + torch.cos(7*x)) 
+
+
+def test_function_2(x):
+    '''
+    Simple optimisation problem to avoid edge problems for DES_BO:
+    f(x) = sin4\pi*x + x
+    '''
+
+    return torch.sin(4*np.pi*x) + x
+
 
 def heteroscedastic_noise(x,sigma2_0,phi = 0):
     '''
