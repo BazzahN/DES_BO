@@ -87,7 +87,7 @@ class BODES_IG(MaxValueBase):
 
     #NOTE:CHANGE: Override forward method 
 
-    # @t_batch_mode_transform(expected_q=1)
+    @t_batch_mode_transform(expected_q=1)
     # @average_over_ensemble_models
     def forward(self, X: Tensor) -> Tensor:
         r"""Compute max-value entropy at the design points `X`.
@@ -100,28 +100,27 @@ class BODES_IG(MaxValueBase):
             A `batch_shape`-dim Tensor of MVE values at the given design points `X`.
         """
         ##Marshall input
-        N = X[...,-1].flatten() #Assumes n input is the extra dimension
-        X_in = X[...,:-1]
+        N = X[...,-1] #shape [k,1]
+        X_in = X[...,:-1] #shape [k,1,1]
 
         # Compute the posterior of both noise and latent model
         posterior_f = self.model.posterior(
-            X=X_in,
+            X=X_in.unsqueeze(-3),
             observation_noise=False,
             posterior_transform=self.posterior_transform,
         )
         posterior_eps = self.model_eps.posterior(
-            X=X_in,
+            X=X_in.unsqueeze(-3),#make [k,1,1,1]
             observation_noise=False,
             posterior_transform=self.posterior_transform,
 
         )
 
-        #Calculate predicted variance \sigma_eps^2
-        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) 
+        # #Calculate predicted variance \sigma_eps^2
+        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
 
-        # batch_shape x num_fantasies x (m)
-        mean_f = self.weight * posterior_f.mean.squeeze(-1).squeeze(-1)
-        sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view(mean_f.shape)
+        mean_f = posterior_f.mean.view_as(sigma_2_eps)
+        sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
         sigma_f = sigma_2_f.sqrt()
         # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
         
@@ -133,10 +132,6 @@ class BODES_IG(MaxValueBase):
         # prepare max value quantities required by GIBBON
         mvs = torch.transpose(self.posterior_max_values, 0, 1)
         # 1 x s_M
-        print(f'mvs shape{mvs.shape}')
-        print(f'mean_f shape{mean_f.shape}')
-        print(f'sigma_f shape {sigma_f.shape}')
-
         normalized_mvs = (mvs - mean_f) / sigma_f
         # batch_shape x s_M
 
@@ -147,23 +142,23 @@ class BODES_IG(MaxValueBase):
 
         # prepare squared correlation between current and target fidelity
         rho = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
-        rhos_squared = torch.pow(rho)
+        # print(f'The rho is {rho}')
         # batch_shape x 1
-        check_no_nans(rhos_squared)
+        check_no_nans(rho)
 
         # calculate quality contribution to the GIBBON acquisition function
-        inner_term = 1 - rhos_squared * ratio * (normalized_mvs + ratio)
+        inner_term = 1 - rho * ratio * (normalized_mvs + ratio)
+        # print(f'The inner term is {rho}')
         acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
         # average over posterior max samples
-        acq = acq.mean(dim=1).unsqueeze(0)
+        costs = self.cost_model(N.squeeze(-1))
+        # print(f'the costs are {costs}')
+        # print(f'The final acq value is {acq}')
+        acq = acq.mean(dim=1)*costs
         
         #Average over fantasies
         # acq = acq.mean(dim=0)
-
-        #Calculate Costs
-        query_cost = self.cost_model(N)
-
-        return acq/query_cost
+        return acq #shape out [k]
 
     def _compute_information_gain(
         self, X: Tensor, mean_M: Tensor, variance_M: Tensor, covar_mM: Tensor

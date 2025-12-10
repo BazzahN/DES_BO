@@ -9,7 +9,7 @@ tkwargs = {
 
 direct = 'Data/'
 names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
-exps = ['BODES_','VANIL_']
+exps = ['BIG_','VANIL_']
 tag = '.pt'
 
 optim_sol = torch.tensor([0.5531]).to(**tkwargs)

@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-from test_utils import test_function, heteroscedastic_noise,flat_noise,InverseLinearCostModel
+from test_utils import test_function,test_function_2, heteroscedastic_noise,flat_noise,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
@@ -17,7 +17,7 @@ torch.manual_seed(seed)
 
 
 #GLOBALS
-SIGMA2 = 2 #Scale of noise surface
+SIGMA2 = 5 #Scale of noise surface
 PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
@@ -48,7 +48,7 @@ class Target_function:
     
     def eval_target_true(self,test_x):
 
-        return test_function(test_x).to(**tkwargs) 
+        return self.test_function(test_x).to(**tkwargs) 
 
 def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     '''
@@ -292,11 +292,12 @@ def poster_plot(
         plt.savefig(f_name, dpi=500, bbox_inches="tight")
 
     plt.show()
-
+TEST_FUNCTION = test_function_2
 def plot_iter_output(N_points,
                      train_x,
                      train_y,
                      model,
+                     test_function = TEST_FUNCTION,
                      fig_title=None,
                      f_name=None,
                      new_point = True):
@@ -505,7 +506,7 @@ def AF_output(N_points,
     X = torch.stack([
         test_x.repeat(len(n_vals)),          # column 0
         n_vals.repeat_interleave(len(test_x))  # column 1
-    ], dim=1)
+    ], dim=1).unsqueeze(1)
     
     AF_vals = acqf(X)
 
@@ -670,7 +671,7 @@ Linear cost function is:
 c(n) = 1/(ax+b)
 where a and b are the linear coeffs
 '''
-a = 0.5
+a = 0.1
 b = 1
 lin_cost_func = InverseLinearCostModel([a,b])
 
@@ -925,11 +926,11 @@ T = 10 #Number of iterations
 M = 10 #Number of MacroReplications
 
 # Constants
-k = 5 #number of samples points
+k = 2 #number of samples points
 n = 5 #flat number of replications
 
 #Initalise Target Function For Experiments
-target = Target_function(test_function,
+target = Target_function(test_function_2,
                          heteroscedastic_noise)
 
 BODES = run_DES_exp_itr(DES_EI,
@@ -947,73 +948,89 @@ model,train_x,train_n,train_y,train_sigma2 =BODES_LI.initialise()
 
 
 from DES_IG_acqf import BODES_IG
-
+CLAMP_LB = 1e-8
 
 IG = BODES_IG(model,
               lin_cost_func,
               train_x) #Candidate set [nxd] i.e. n - number of points d - dimension of design
 
-out = AF_output(100,IG,torch.tensor([5]))
+out = AF_output(1,IG,torch.tensor([10]))
+
+plot_AF(100,IG,torch.tensor([3,5,8,10,50]))
+
+plot_iter_output(100,train_x,train_y,model,new_point=False)
+
+# N_points= 10
+# test_x = torch.linspace(0,1,N_points).to(**tkwargs)
+
+# n_vals = torch.tensor([5])
+# # Build X
+# X = torch.stack([
+#     test_x.repeat(len(n_vals)),          # column 0
+#     n_vals.repeat_interleave(len(test_x))  # column 1
+# ], dim=1).unsqueeze(1)
+# print(X.shape)
+
+# #Recieve X as shape [k,1,2]
+
+# #Split off N leaving X as [k,1,1]
+# N = X[...,-1] #shape [k,1]
+# X_in = X[...,:-1] #shape [k,1,1]
+
+# #Extract each relevant model
+# model_f = model['f']
+# model_eps = model['eps']
+
+# # Compute the posterior of both noise and latent model
+# posterior_f = model_f.posterior(
+#     X=X_in.unsqueeze(-3),
+#     observation_noise=False,
+# )
+# posterior_eps = model_eps.posterior(
+#     X=X_in.unsqueeze(-3), #make [k,1,1,1]
+#     observation_noise=False,
+# )
+
+# # #Calculate predicted variance \sigma_eps^2
+# sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
+
+# mean_f = posterior_f.mean.view_as(sigma_2_eps)
+# sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
+# sigma_f = sigma_2_f.sqrt()
+
+# # # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
+# posterior_max_values = torch.rand([10,1])
+# normal = torch.distributions.Normal(
+#     torch.zeros(1, device=X.device, dtype=X.dtype),
+#     torch.ones(1, device=X.device, dtype=X.dtype),
+# )
+
+# # prepare max value quantities required by GIBBON
+# mvs = torch.transpose(posterior_max_values, 0, 1)
+# # 1 x s_M
+
+# normalized_mvs = (mvs - mean_f) / sigma_f
+# # # batch_shape x s_M
+
+# cdf_mvs = normal.cdf(normalized_mvs).clamp_min(CLAMP_LB)
+# pdf_mvs = torch.exp(normal.log_prob(normalized_mvs))
+# ratio = pdf_mvs / cdf_mvs
 
 
-N = X[...,-1].flatten() #Assumes n input is the extra dimension
-X_in = X[...,:-1]
+# # # prepare squared correlation between current and target fidelity
+# rho = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
 
-model_f = model['f']
-model_eps = model['eps']
+# rhos_squared = torch.pow(rho,2)
+# print(rhos_squared.shape)
+# # batch_shape x 1
 
-# Compute the posterior of both noise and latent model
-posterior_f = model_f.posterior(
-    X=X_in,
-    observation_noise=False,
-)
-posterior_eps = model_eps.posterior(
-    X=X_in,
-    observation_noise=False,
-)
+# # # calculate quality contribution to the GIBBON acquisition function
+# inner_term = 1 - rhos_squared * ratio * (normalized_mvs + ratio)
+# acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
+# print(acq.shape)
+# # # average over posterior max samples
+# acq = acq.mean(dim=1)/lin_cost_func(N.squeeze(-1))
 
-#Calculate predicted variance \sigma_eps^2
-sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) 
+# #Average over fantasies
+# # acq = acq.mean(dim=0)
 
-# batch_shape x num_fantasies x (m)
-mean_f = posterior_f.mean.squeeze(-1).squeeze(-1)
-sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view(mean_f.shape)
-sigma_f = sigma_2_f.sqrt()
-# Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
-
-normal = torch.distributions.Normal(
-    torch.zeros(1, device=X.device, dtype=X.dtype),
-    torch.ones(1, device=X.device, dtype=X.dtype),
-)
-
-# prepare max value quantities required by GIBBON
-mvs = torch.transpose(posterior_max_values, 0, 1)
-# 1 x s_M
-print(f'mvs shape{mvs.shape}')
-print(f'mean_f shape{mean_f.shape}')
-print(f'sigma_f shape {sigma_f.shape}')
-
-normalized_mvs = (mvs - mean_f) / sigma_f
-# batch_shape x s_M
-
-cdf_mvs = normal.cdf(normalized_mvs).clamp_min(CLAMP_LB)
-pdf_mvs = torch.exp(normal.log_prob(normalized_mvs))
-ratio = pdf_mvs / cdf_mvs
-
-
-# prepare squared correlation between current and target fidelity
-rho = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
-rhos_squared = torch.pow(rho)
-# batch_shape x 1
-
-# calculate quality contribution to the GIBBON acquisition function
-inner_term = 1 - rhos_squared * ratio * (normalized_mvs + ratio)
-acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
-# average over posterior max samples
-acq = acq.mean(dim=1).unsqueeze(0)
-
-#Average over fantasies
-# acq = acq.mean(dim=0)
-
-#Calculate Costs
-query_cost = lin_cost_func(N)

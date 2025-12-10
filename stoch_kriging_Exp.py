@@ -1,8 +1,9 @@
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-from test_utils import test_function, heteroscedastic_noise,flat_noise,InverseLinearCostModel
+from test_utils import test_function,test_function_2, heteroscedastic_noise,flat_noise,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq
+from DES_IG_acqf import BODES_IG
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -17,8 +18,8 @@ torch.manual_seed(seed)
 
 
 #GLOBALS
-SIGMA2 = 2 #Scale of noise surface
-PHI = 1.5 #Shift of Heteroscedastic noise surface
+SIGMA2 = 0.5 #Scale of noise surface
+PHI = 0 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
 
@@ -821,6 +822,60 @@ class run_DES_exp_itr:
         return model, train_x, train_n, train_y, train_sigma2
 
 
+class run_IG_exp_itr:
+
+    def __init__(self,
+                 AF,
+                 model_call_func,
+                 target_function,
+                 bounds=BOUNDS):
+
+        r"""Single iteration of BODES
+            Args:
+                AF: AnalyticalAcquisition Function Type
+                    candidate sets X will be)
+                posterior_transform: A PosteriorTransform. If using a multi-output model,
+                    a PosteriorTransform that transforms the multi-output posterior into a
+                    single-output posterior is required.
+                maximize: If True, consider the problem a maximization problem. Note
+                    that if `maximize=False`, the posterior mean is negated. As a
+                    consequence `optimize_acqf(PosteriorMean(gp, maximize=False))`
+                    actually returns -1 * minimum of the posterior mean.
+            """
+        self.AF = AF
+        self.model_call_func = model_call_func
+        self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
+        self.bounds= bounds
+        self.discrete_space = torch.linspace(bounds[0,0],bounds[1,0],10).unsqueeze(1)
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2):
+        
+        #Initialise AF for candidate selection
+        AF = self.AF(model = model,
+                     cost_model=lin_cost_func,
+                     candidate_set = self.discrete_space,
+                     maximize=MAXIMIZE) #Define Cost aware and penalised EI
+
+        ## Optimise AF and get candidates
+        xn_new, _ = candidate_acq(AF,self.bounds)
+
+        # The selected n point is rounded to the nearest integer
+        xn_new[0,1] = xn_new[0,1].round(decimals=0)
+        ## Update Dataset
+        new_x = xn_new[0,0].reshape(1,1)
+        new_n = xn_new[0,1].reshape(1,1)
+        new_y, new_sigma2 = self.run_sim(new_x,new_n)
+
+        train_x = torch.cat([train_x,new_x])
+        train_n = torch.cat([train_n,new_n])
+        train_y = torch.cat([train_y,new_y])
+        train_sigma2 = torch.cat([train_sigma2,new_sigma2])
+
+        ## Re-condtion model
+        model = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+
+        return model, train_x, train_n, train_y, train_sigma2
+
+
 def get_best_fs_AEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
 
     acq_strat_AEI = AEI_fq(model['f'],maximize=maximise)
@@ -929,8 +984,8 @@ k = 5 #number of samples points
 n = 5 #flat number of replications
 
 #Initalise Target Function For Experiments
-target = Target_function(test_function,
-                         heteroscedastic_noise)
+target = Target_function(test_function_2,
+                         flat_noise)
 
 BODES = run_DES_exp_itr(DES_EI,
                         get_best_fs_AEI,
@@ -943,23 +998,23 @@ BODES_LI = BODES_loop_initialiser(k,
 
 
 
-experiments = experiment_handler(BODES_LI,
-                                 BODES)
+# experiments = experiment_handler(BODES_LI,
+#                                  BODES)
 
 
 
-out = experiments.run_MT_BO_macros(M,T)
+# out = experiments.run_MT_BO_macros(M,T)
 
 dir = 'Data/'
 names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
 
-exp = 'BODES_'
+# exp = 'BODES_'
 
-#Save as tensors
-for name,d in zip(names,out):
+# #Save as tensors
+# for name,d in zip(names,out):
 
-    fname = dir + exp + name + '.pt'
-    torch.save(d,dir + exp + name + '.pt')
+#     fname = dir + exp + name + '.pt'
+#     torch.save(d,dir + exp + name + '.pt')
 
 
 
@@ -976,6 +1031,21 @@ out = van_experiments.run_MT_BO_macros(M,T)
 
 
 exp = 'VANIL_'
+#Save as tensors
+for name,d in zip(names,out):
+
+    fname = dir + exp + name + '.pt'
+    torch.save(d,dir + exp + name + '.pt')
+
+
+BIG = run_IG_exp_itr(BODES_IG,get_stoch_kriging_model,target)
+
+big_experiments = experiment_handler(BODES_LI,BIG)
+
+out = big_experiments.run_MT_BO_macros(M,T)
+
+
+exp = 'BIG_'
 #Save as tensors
 for name,d in zip(names,out):
 

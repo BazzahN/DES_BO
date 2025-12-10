@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-from test_utils import test_function, heteroscedastic_noise,flat_noise,InverseLinearCostModel
+from test_utils import test_function, heteroscedastic_noise,flat_noise,InverseLinearCostModel, test_function_2
 from DES_acqfs import DES_EI, AEI_fq
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
@@ -16,12 +16,12 @@ seed = 12345
 torch.manual_seed(seed)
 
 #GLOBALS
-SIGMA2 = 1 #Scale of noise surface
-PHI = 1.5 #Shift of Heteroscedastic noise surface
+SIGMA2 = 5 #Scale of noise surface
+PHI = 0 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
 # Constants
-k = 5 #number of samples points
+k = 3 #number of samples points
 n = 5 #flat number of replications
 
 #Generate decision variables
@@ -30,7 +30,8 @@ train_x = torch.linspace(0.1,1,k).to(**tkwargs)
 train_n = torch.ones_like(train_x) * n
 
 #Calculate sigma^2(x)
-noise_function = flat_noise
+noise_function = heteroscedastic_noise
+test_func = test_function_2
 sigma2_vec = noise_function(train_x,SIGMA2,PHI).to(**tkwargs)
 
 # Calculate sample variance
@@ -38,14 +39,14 @@ s2_vec = sigma2_vec / train_n
 noise = torch.randn_like(train_x) * s2_vec
 
 #Generate y values from latent function plus heteroscedastic Gaussian noise
-train_y = test_function(train_x).to(**tkwargs) + noise
+train_y = test_func(train_x).to(**tkwargs) + noise
 
 #Plot Test Function
 N_points=500
 test_x = torch.linspace(0,1,N_points).to(**tkwargs)
 true_sig2 = noise_function(test_x,SIGMA2,PHI).to(**tkwargs)
 true_sig = true_sig2.sqrt()
-true_y = test_function(test_x)
+true_y = test_func(test_x)
 
 upper = true_y + true_sig
 lower = true_y - true_sig
@@ -98,7 +99,7 @@ def get_new_y_and_sigma(x,n,sigma2 = SIGMA2,phi = PHI):
     s2_vec = sigma2_vec / n
     noise = torch.randn_like(x) * s2_vec
     #Generate y values from latent function plus heteroscedastic Gaussian noise
-    train_y = test_function(x).to(**tkwargs) + noise
+    train_y = test_func(x).to(**tkwargs) + noise
 
     return train_y, sigma2_vec
 
@@ -323,7 +324,7 @@ def poster_plot(
     test_x = torch.linspace(0, 1, N_points).to(**tkwargs)
 
     # Generate true output and predictions
-    true_y = test_function(test_x)
+    true_y = test_func(test_x)
     preds = model['f'].posterior(test_x, observation_noise=False)
 
     # Acquisition function output
@@ -410,7 +411,7 @@ N_points = 100 #Number of test points
 
 #Generate test points
 test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-true_y = test_function(test_x)
+true_y = test_func(test_x)
 preds = sk_model['f'].posterior(test_x,observation_noise=False) 
     
 # Plot GP predictions with dataset and predictions    
@@ -458,7 +459,7 @@ def plot_iter_output(N_points,
     '''
     #Generate true outptu and predictions
     test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-    true_y = test_function(test_x)
+    true_y = test_func(test_x)
     preds = model['f'].posterior(test_x,observation_noise=False) 
     
     
@@ -868,7 +869,7 @@ X_BOUNDS = torch.tensor([[0] * 1,
 
 # BO Optimisation Looop
 n_dir = 'images/'
-T = 5
+T = 15
 AF_vals = []
 f_bests =[]
 
