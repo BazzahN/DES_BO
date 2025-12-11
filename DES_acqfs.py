@@ -50,8 +50,7 @@ class DES_EI(AnalyticAcquisitionFunction):
 
     def __init__(
         self,
-        model_f, #Main Model
-        model_eps, #Noise Model 
+        model, #Now takes model dictionary instead of single model
         best_f,
         cost_model, # Cost model - we use linear cost model usually
         posterior_transform = None,
@@ -74,11 +73,11 @@ class DES_EI(AnalyticAcquisitionFunction):
                 single-output posterior is required.
             maximize: If True, consider the problem a maximization problem.
         """
-        super().__init__(model=model_f, posterior_transform=posterior_transform)
+        super().__init__(model=model['f'], posterior_transform=posterior_transform)
         self.register_buffer("best_f", torch.as_tensor(best_f))
         self.cost_model = cost_model
         self.maximize = maximize
-        self.model_eps = model_eps
+        self.model_eps = model['eps']
             
     def forward(self, X: Tensor) -> Tensor:
         r"""Evaluate DES Expected Improvement on the candidate set X.
@@ -94,17 +93,11 @@ class DES_EI(AnalyticAcquisitionFunction):
             given design points `X`.
         """
         self.to(device=X.device)  # ensures buffers / parameters are on the same device
-        # print('X in shape \n')
-        # print(X.shape)
-
+      
         #TODO Implement code to account for unknown dimensions.
         N = X[...,-1].flatten() #Assumes n input is the extra dimension
         X_in = X[...,:-1]
-        # print('\n N shape \n')
-        # print(N.shape)
-
-        # print('\n X shape \n')
-        # print(X_in.shape)
+      
         #Calculate Posterior of noise model for variance predictions
         posterior_eps = self.model_eps.posterior(
             X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,

@@ -18,8 +18,8 @@ torch.manual_seed(seed)
 
 
 #GLOBALS
-SIGMA2 = 0.5 #Scale of noise surface
-PHI = 0 #Shift of Heteroscedastic noise surface
+SIGMA2 = 1 #Scale of noise surface
+PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
 
@@ -49,7 +49,7 @@ class Target_function:
     
     def eval_target_true(self,test_x):
 
-        return test_function(test_x).to(**tkwargs) 
+        return self.test_function(test_x).to(**tkwargs) 
 
 def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     '''
@@ -795,8 +795,7 @@ class run_DES_exp_itr:
         f_best = self.f_best_strat(model)
 
         #Initialise AF for candidate selection
-        AF = self.AF(model_f=model['f'],
-                     model_eps=model['eps'],
+        AF = self.AF(model = model,
                      best_f=f_best, #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
                      cost_model=lin_cost_func,
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
@@ -977,7 +976,7 @@ class experiment_handler:
 
 #Experimental Parameters
 T = 10 #Number of iterations
-M = 10 #Number of MacroReplications
+M = 25 #Number of MacroReplications
 
 # Constants
 k = 5 #number of samples points
@@ -985,8 +984,49 @@ n = 5 #flat number of replications
 
 #Initalise Target Function For Experiments
 target = Target_function(test_function_2,
-                         flat_noise)
+                         heteroscedastic_noise)
 
+noise_function = heteroscedastic_noise
+
+
+
+N_points=500
+test_x = torch.linspace(0,1,N_points).to(**tkwargs)
+true_sig2 = noise_function(test_x,SIGMA2,PHI).to(**tkwargs)
+true_sig = true_sig2.sqrt()
+true_y = target.eval_target_true(test_x)
+
+
+upper = true_y + true_sig
+lower = true_y - true_sig
+
+if MAXIMIZE:
+    optim_point = true_y.max()
+    optim_idx = true_y.argmax()
+else:
+    optim_point = true_y.min()
+    optim_idx = true_y.argmin()
+
+optim_sol = test_x[optim_idx]
+
+f, ax = plt.subplots(1, 2, figsize=(18, 6))
+ax[0].plot(test_x.numpy(),true_y.numpy(),label='$f(x)$')
+ax[0].plot(optim_sol.numpy(),optim_point.numpy(),'k*',label='optimal point')
+ax[0].fill_between(test_x.numpy(),lower.numpy(),upper.numpy(),alpha=0.2,label='True $+/- \sigma$',color='g')
+ax[0].set_xlabel('$x$')
+ax[0].set_ylabel('$f(x)$')
+ax[0].set_title('True Function with $\pm \sigma_{\epsilon}$')
+ax[0].legend()
+
+ax[1].plot(test_x.numpy(),true_sig2.numpy(),label='True $\sigma^2(x)$',color='g')
+ax[1].set_xlabel('$x$')
+ax[1].set_ylabel('$\sigma{\epsilon}^2(x)$')
+ax[1].set_title(f'Heteroscedastic Noise|$\sigma^2_0 =${SIGMA2}')
+ax[1].legend()
+
+plt.suptitle('True Function with Heteroscedastic Variance Function')
+plt.savefig('BODES_test_problem_S1.png',dpi=500,bbox_inches = 'tight')
+plt.show()
 BODES = run_DES_exp_itr(DES_EI,
                         get_best_fs_AEI,
                         get_stoch_kriging_model,
@@ -1005,10 +1045,10 @@ BODES_LI = BODES_loop_initialiser(k,
 
 # out = experiments.run_MT_BO_macros(M,T)
 
-dir = 'Data/'
-names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
+# dir = 'Data/'
+# names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
 
-# exp = 'BODES_'
+# exp = 'AEI_'
 
 # #Save as tensors
 # for name,d in zip(names,out):
@@ -1019,35 +1059,35 @@ names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
 
 
 
-VAN_BO = run_vanilla_exp_itr(5,
-                             ExpectedImprovement,
-                             get_best_f_SEI,
-                             get_stoch_kriging_model,
-                             target)
+# VAN_BO = run_vanilla_exp_itr(5,
+#                              ExpectedImprovement,
+#                              get_best_f_SEI,
+#                              get_stoch_kriging_model,
+#                              target)
 
-van_experiments = experiment_handler(BODES_LI,VAN_BO)
+# van_experiments = experiment_handler(BODES_LI,VAN_BO)
 
-out = van_experiments.run_MT_BO_macros(M,T)
-
-
-exp = 'VANIL_'
-#Save as tensors
-for name,d in zip(names,out):
-
-    fname = dir + exp + name + '.pt'
-    torch.save(d,dir + exp + name + '.pt')
+# out = van_experiments.run_MT_BO_macros(M,T)
 
 
-BIG = run_IG_exp_itr(BODES_IG,get_stoch_kriging_model,target)
+# exp = 'VANIL_'
+# #Save as tensors
+# for name,d in zip(names,out):
 
-big_experiments = experiment_handler(BODES_LI,BIG)
+#     fname = dir + exp + name + '.pt'
+#     torch.save(d,dir + exp + name + '.pt')
 
-out = big_experiments.run_MT_BO_macros(M,T)
+
+# BIG = run_IG_exp_itr(BODES_IG,get_stoch_kriging_model,target)
+
+# big_experiments = experiment_handler(BODES_LI,BIG)
+
+# out = big_experiments.run_MT_BO_macros(M,T)
 
 
-exp = 'BIG_'
-#Save as tensors
-for name,d in zip(names,out):
+# exp = 'BIG_'
+# #Save as tensors
+# for name,d in zip(names,out):
 
-    fname = dir + exp + name + '.pt'
-    torch.save(d,dir + exp + name + '.pt')
+#     fname = dir + exp + name + '.pt'
+#     torch.save(d,dir + exp + name + '.pt')

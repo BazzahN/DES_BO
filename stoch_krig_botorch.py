@@ -903,8 +903,7 @@ class run_DES_exp_itr:
         f_best = self.f_best_strat(model)
 
         #Initialise AF for candidate selection
-        AF = self.AF(model_f=model['f'],
-                     model_eps=model['eps'],
+        AF = self.AF(model = model,
                      best_f=f_best, #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
                      cost_model=lin_cost_func,
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
@@ -980,8 +979,7 @@ for t in range(0,T):
     
 
     #Initialise AF for candidate selection
-    AEI = DES_EI(model_f=sk_model['f'],
-                model_eps=sk_model['eps'],
+    AEI = DES_EI(model = sk_model,
                 best_f=f_best,
                 cost_model=lin_cost_func,
                 maximize=MAXIMIZE) #Define Cost aware and penalised EI
