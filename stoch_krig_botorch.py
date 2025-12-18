@@ -910,8 +910,8 @@ Linear cost function is:
 c(n) = 1/(ax+b)
 where a and b are the linear coeffs
 '''
-a = 0.1
-b = 2
+a = 0.5
+b = 1
 lin_cost_func = InverseLinearCostModel([a,b])
 
 ## Define f^*
