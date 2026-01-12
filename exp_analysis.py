@@ -1,15 +1,15 @@
 import torch
-
-from stoch_kriging_Exp import Target_function
-from test_utils import test_function,flat_noise,heteroscedastic_noise
+from test_utils import Target_function,test_function_2,test_function_neg,test_function,flat_noise,heteroscedastic_noise
 tkwargs = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
 }
 
-direct = 'Data/'
+PHI = 1.5
+SIGMA2 = 1
+direct = 'Temp/'#'Data/'
 names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
-exps = ['BIG_','VANIL_']
+exps = ['BIG_','VANIL_','AEI_']
 tag = '.pt'
 
 optim_sol = torch.tensor([0.5531]).to(**tkwargs)
@@ -50,40 +50,48 @@ def name_get(idx_1,idx_2):
 #Extract n Data
 d_idx = 1 #n index
 n_BODES = torch.load(name_get(0,d_idx))
+n_AEI = torch.load(name_get(2,d_idx))
 n_VANIL = torch.load(name_get(1,d_idx))
 
 #Calculate Cumsum
 n_BODES_cumsum = torch.cumsum(n_BODES,dim=1)
+n_AEI_cumsum = torch.cumsum(n_AEI,dim=1)
 n_VANIL_cumsum = torch.cumsum(n_VANIL,dim=1)
 
 #Remove first 4 values - no longer needed
 n_B_trim = n_BODES_cumsum[:,4:,:]
+n_A_trim = n_AEI_cumsum[:,4:,:]
 n_V_trim = n_VANIL_cumsum[:,4:,:]
 
 #Extract f str Data
 d_idx = 5 #f str index
 fstr_BODES = torch.load(name_get(0,d_idx))
 fstr_VANIL = torch.load(name_get(1,d_idx))
+fstr_AEI = torch.load(name_get(2,d_idx))
 
 #Calculate cummax
 fstr_BODES_cummax,_ = torch.cummax(fstr_BODES,dim=1)
 fstr_VANIL_cummax,_ = torch.cummax(fstr_VANIL,dim=1)
+fstr_AEI_cummax,_ = torch.cummax(fstr_AEI,dim=1)
 
 #Extract x str Data
 d_idx = 4 #f str index
 xstr_BODES = torch.load(name_get(0,d_idx))
 xstr_VANIL = torch.load(name_get(1,d_idx))
+xstr_AEI = torch.load(name_get(2,d_idx))
 
-target = Target_function(test_function,
-                         heteroscedastic_noise)
+target = Target_function(test_function_neg,
+                         heteroscedastic_noise,
+                         phi=PHI,
+                         theta=SIGMA2,)
 
 f_xstr_B = target.eval_target_true(xstr_BODES)
 f_xstr_V = target.eval_target_true(xstr_VANIL)
-
+f_xstr_A = target.eval_target_true(xstr_AEI)
 #Calculate cumx
 f_xstr_B_cm,_ = torch.cummax(f_xstr_B,dim=1)
 f_xstr_V_cm,_ = torch.cummax(f_xstr_V,dim=1)
-
+f_xstr_A_cm,_ = torch.cummax(f_xstr_A,dim=1)
 
 #Data shape
 # [M,T,1] - M is the number of macros
@@ -134,7 +142,7 @@ def interpolate_experiment(n_exp, f_exp, num_points=200):
 
 
 # --- Align shapes: drop first 5 from n_exp so it matches f_exp ---
-
+#Plot the ones that matter
 data1 = f_xstr_B_cm
 data2 = f_xstr_V_cm
 
@@ -150,23 +158,62 @@ sns.set_theme(style="whitegrid", font_scale=1.4)
 plt.figure(figsize=(12, 8))
 
 # Experiment 1
-plt.plot(n_grid1, f_mean1, label="AEI - n selection", linewidth=2.5)
+plt.plot(n_grid1, f_mean1, label="IG - n selection", linewidth=2.5)
 plt.fill_between(n_grid1, f_mean1 - f_std1, f_mean1 + f_std1, alpha=0.2)
 
 # Experiment 2 (direct, no interpolation)
 plt.plot(n2_np, f_mean2, label="EI- $n=5$", linewidth=2.5)
 plt.fill_between(n2_np, f_mean2 - f_std2, f_mean2 + f_std2, alpha=0.2)
 
-plt.xlim(25,75)
+plt.xlim(25,120)
 plt.xlabel("Cumulative $n$")
 plt.ylabel("$f^*$")
-plt.title(f"Performance Across $M=${10} Macroreplications")
+plt.title(f"Performance Across $M=${25} Macroreplications")
 plt.legend()
 plt.tight_layout()
-plt.savefig('Prelim_test.png', dpi=500, bbox_inches="tight")
+plt.savefig('IG_EI_new_std.png', dpi=500, bbox_inches="tight") #The ones that matter
 plt.show()
 
 
+# --- Align shapes: drop first 5 from n_exp so it matches f_exp ---
+
+data1 = f_xstr_B_cm
+data2 = f_xstr_V_cm
+data3 = f_xstr_A_cm
+
+n_grid1, f_mean1, f_std1 = interpolate_experiment(n_B_trim, data1)
+n_grid3, f_mean3, f_std3 = interpolate_experiment(n_A_trim, data3)
+
+
+n2_np = n_V_trim.squeeze(-1).cpu().numpy()[0]   # identical across reps
+f2_np = data2.squeeze(-1).cpu().numpy()
+
+f_mean2 = f2_np.mean(axis=0)
+f_std2  = f2_np.std(axis=0,)
+
+sns.set_theme(style="whitegrid", font_scale=1.4)
+plt.figure(figsize=(12, 8))
+
+# Experiment 1
+plt.plot(n_grid1, f_mean1, label="IG - n selection", linewidth=2.5)
+plt.fill_between(n_grid1, f_mean1 - f_std1, f_mean1 + f_std1, alpha=0.2)
+
+# Experiment 2 (direct, no interpolation)
+plt.plot(n2_np, f_mean2, label="EI- $n=5$", linewidth=2.5)
+plt.fill_between(n2_np, f_mean2 - f_std2, f_mean2 + f_std2, alpha=0.2)
+
+# Experiment 3 
+plt.plot(n_grid3, f_mean3, label="AEI- n selection", linewidth=2.5)
+plt.fill_between(n_grid3, f_mean3 - f_std3, f_mean3 + f_std3, alpha=0.2)
+
+plt.xlim(25,100)
+plt.xlabel("Cumulative $n$")
+plt.ylabel("$f^*$")
+plt.title(f"Performance Across $M=${25} Macroreplications")
+plt.legend()
+plt.tight_layout()
+plt.savefig('IG_EI_AEI_new_std.png', dpi=500, bbox_inches="tight")
+plt.show()
 
 # # --- Compute mean trajectory for both experiments ---
 # df1 = compute_mean_trajectory(n_B_trim, fstr_BODES_cummax, "AEI")

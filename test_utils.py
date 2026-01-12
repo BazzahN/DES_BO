@@ -12,7 +12,10 @@ Including
 import torch
 import numpy as np
 from torch import Tensor
-
+tkwargs = {
+    "dtype": torch.double,# Datatype used by tensors
+    "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
+}
 def test_function(x):
     '''
     Simple optimisation problem for DES_BO:
@@ -30,6 +33,22 @@ def test_function(x):
 
     return (torch.sin(5*x) + torch.cos(7*x)) 
 
+def test_function_neg(x):
+    '''
+    Simple optimisation problem for DES_BO:
+        f(x) = sin(5x) + cos(7x)
+
+    Inputs
+    ------
+    x:Tensor
+        The test/train locations for the GP
+    Returns
+    -------
+    f: Float
+        Evaluation of the test function
+    '''
+
+    return -(torch.sin(5*x) + torch.cos(7*x)) 
 
 def test_function_2(x):
     '''
@@ -109,6 +128,34 @@ class InverseLinearCostModel(DeterministicModel):
         '''
         cost = 1/(self.lin_coeffs[0]*N + self.lin_coeffs[1])
         return cost
+
+class Target_function:
+
+    def __init__(self,
+                 test_function,
+                 noise_function,
+                 phi,
+                 theta):
+        
+        self.test_function = test_function
+        self.noise_function = noise_function
+        self.phi = phi
+        self.theta = theta
+
+    def eval_target_noisy(self,test_x,test_n):
+        
+        sigma_2 = self.noise_function(test_x,self.theta,self.phi).to(**tkwargs)
+        # Calculate sample variance
+        s2_vec = sigma_2 / test_n
+        noise = torch.randn_like(test_x) * s2_vec        
+
+        y_evals = self.test_function(test_x).to(**tkwargs) + noise
+
+        return y_evals,sigma_2
+    
+    def eval_target_true(self,test_x):
+
+        return self.test_function(test_x).to(**tkwargs) 
 
 #TODO Linear Regression linear cost model
 '''

@@ -22,7 +22,7 @@ PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
 # Constants
-k = 5 #number of samples points
+k = 10 #number of samples points
 n = 2 #flat number of replications
 
 
@@ -139,12 +139,24 @@ class output_handler:
 
         return (y-self.mu_std)/self.sig_std
 
+    def standardise_noise(self,sigma2_eps):
+        '''
+            Standardises the variance observations
+
+            Inputs
+            ------
+            sigma2_eps: kx1
+                The variance evaluations corresponding to y data
+        '''
+        sig2_std = self.sig_std**2
+        return sigma2_eps/sig2_std
+    
     def unstandardise(self,y_std):
         '''
             Reverts standardised input back to its previous state
-        
+            TODO: Add feature for unstandardising the uncertainty, but please get the maths right!
         '''
-        return y_std*self.sig_std + self.mu_std
+        return y_std*self.sig_std + self.mu_std,
 
 def get_new_y_and_sigma(x,n,sigma2 = SIGMA2,phi = PHI):
     '''
@@ -207,13 +219,14 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat,output_handler):
     #Include observational noise on f hyperparamter 
     ## This is done by setting
 
-    s2 = (sigma2_hat / train_n).view(-1, 1) #Sample variance transform
+    sigma2_hat_std = output_handler.standardise_noise(sigma2_hat)
+    s2_std = (sigma2_hat_std/ train_n).view(-1, 1) #Sample variance transform
     
     train_y_std = output_handler.standardise_and_update(train_y)
     #Fit main Model
     gp = SingleTaskGP(train_x,
                       train_y_std,
-                      train_Yvar=s2,
+                      train_Yvar=s2_std,
                       outcome_transform=None,
                       #add_noise=True,
                       )
@@ -223,8 +236,8 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat,output_handler):
 
     #Fit Noise Model
     gp_noise = SingleTaskGP(train_x,
-                            sigma2_hat,
-                            train_Yvar=torch.zeros_like(sigma2_hat),
+                            sigma2_hat_std,
+                            train_Yvar=torch.zeros_like(sigma2_hat_std),
                             outcome_transform=None,
                             )
     mll = ExactMarginalLogLikelihood(gp_noise.likelihood,gp_noise)

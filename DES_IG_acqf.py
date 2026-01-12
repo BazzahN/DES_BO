@@ -131,6 +131,7 @@ class BODES_IG(MaxValueBase):
 
         # prepare max value quantities required by GIBBON
         mvs = torch.transpose(self.posterior_max_values, 0, 1)
+        #print(f'The sampled max values are:\n {mvs}\n')
         # 1 x s_M
         normalized_mvs = (mvs - mean_f) / sigma_f
         # batch_shape x s_M
@@ -141,13 +142,13 @@ class BODES_IG(MaxValueBase):
         check_no_nans(ratio)
 
         # prepare squared correlation between current and target fidelity
-        rho = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
+        rho_sq = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
         # print(f'The rho is {rho}')
         # batch_shape x 1
-        check_no_nans(rho)
+        check_no_nans(rho_sq)
 
         # calculate quality contribution to the GIBBON acquisition function
-        inner_term = 1 - rho * ratio * (normalized_mvs + ratio)
+        inner_term = 1 - rho_sq * ratio * (normalized_mvs + ratio)
         # print(f'The inner term is {rho}')
         acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
         # average over posterior max samples
