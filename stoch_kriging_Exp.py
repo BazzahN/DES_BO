@@ -22,35 +22,6 @@ SIGMA2 = 1 #Scale of noise surface
 PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
-
-# class Target_function:
-
-#     def __init__(self,
-#                  test_function,
-#                  noise_function,
-#                  phi=PHI,
-#                  theta=SIGMA2):
-        
-#         self.test_function = test_function
-#         self.noise_function = noise_function
-#         self.phi = phi
-#         self.theta = theta
-
-#     def eval_target_noisy(self,test_x,test_n):
-        
-#         sigma_2 = self.noise_function(test_x,self.theta,self.phi).to(**tkwargs)
-#         # Calculate sample variance
-#         s2_vec = sigma_2 / test_n
-#         noise = torch.randn_like(test_x) * s2_vec        
-
-#         y_evals = self.test_function(test_x).to(**tkwargs) + noise
-
-#         return y_evals,sigma_2
-    
-#     def eval_target_true(self,test_x):
-
-#         return self.test_function(test_x).to(**tkwargs) 
-
 class output_handler:
 
     def __init__(self):
@@ -942,11 +913,6 @@ def get_best_f_SEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
     return x_best,f_best
 
 
-# def trace(text):
-#     '''
-#     Helper Function
-#     '''
-
 class experiment_handler:
 
     def __init__(self,
@@ -1035,14 +1001,12 @@ k = 5 #number of samples points
 n = 5 #flat number of replications
 
 noise_function = flat_noise
+
 #Initalise Target Function For Experiments
 target = Target_function(test_function_neg,
                          flat_noise,
                          phi=PHI,
                          theta=SIGMA2)
-
-
-
 
 
 N_points=500

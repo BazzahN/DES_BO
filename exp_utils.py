@@ -1,8 +1,8 @@
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
-from test_utils import test_function,test_function_2, heteroscedastic_noise,flat_noise,InverseLinearCostModel
-from DES_acqfs import DES_EI, AEI_fq
+from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
+from DES_acqfs import DES_EI, AEI_fq,BODES_IG
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -17,39 +17,51 @@ torch.manual_seed(seed)
 
 
 #GLOBALS
-SIGMA2 = 5 #Scale of noise surface
-PHI = 1.5 #Shift of Heteroscedastic noise surface
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
 
+class output_handler:
 
-class Target_function:
-
-    def __init__(self,
-                 test_function,
-                 noise_function,
-                 phi=PHI,
-                 theta=SIGMA2):
+    def __init__(self):
         
-        self.test_function = test_function
-        self.noise_function = noise_function
-        self.phi = phi
-        self.theta = theta
+        #Sets paramaters so that standardisation does nothing
+        self.sig_std = 1
+        self.mu_std = 0
 
-    def eval_target_noisy(self,test_x,test_n):
+    def standardise_and_update(self,y):
+        '''
+        Standardises the inputed data to N(0,1) distribution
+        and updates the transformation paramaters sigma_std and mu_std
         
-        sigma_2 = self.noise_function(test_x,self.theta,self.phi).to(**tkwargs)
-        # Calculate sample variance
-        s2_vec = sigma_2 / test_n
-        noise = torch.randn_like(test_x) * s2_vec        
+        Inputs
+        ------
+        train_y: kx1
+            The training data to be standardised.
+        '''
+        #Calculate mean and std of data
+        self.mu_std = y.mean()
+        self.sig_std = y.std()
 
-        y_evals = self.test_function(test_x).to(**tkwargs) + noise
-
-        return y_evals,sigma_2
+        return (y-self.mu_std)/self.sig_std
     
-    def eval_target_true(self,test_x):
+    def standardise(self,y):
+        '''
+            Standardises the inputed data to N(0,1) distribution
 
-        return self.test_function(test_x).to(**tkwargs) 
+            Inputs
+            ------
+            train_y: kx1
+                The training data to be standardised.
+        '''
 
+        return (y-self.mu_std)/self.sig_std
+
+    def unstandardise(self,y_std):
+        '''
+            Reverts standardised input back to its previous state
+        
+        '''
+        return y_std*self.sig_std + self.mu_std
+    
 def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     '''
     Constructs and conditions on the dataset D_t = (train_x,train_n,train_y) the 
@@ -68,21 +80,24 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     sigma2_hat: Tensor
         A tensor of estimated variance values
 
-
     Returns
     -------
     model:dict('f' = latent model, 'eps' = noise model)
         A dictionary of the stochastic kriging Gaussian process model components
     
     '''
+    # Initialise output_handler objects
+    y_handler = output_handler()
+    sigma2_handler = output_handler()
 
-    #Include observational noise on f hyperparamter 
-    ## This is done by setting
-
-    s2 = (sigma2_hat / train_n).view(-1, 1) #Sample variance transform
+    #Standardise y input
+    train_y_std = y_handler.standardise_and_update(train_y)
+    sig_scale = 1 / y_handler.sig_std
+    s2 = (sigma2_hat / train_n).view(-1, 1) * sig_scale #Sample variance transform
+    
     #Fit main Model
     gp = SingleTaskGP(train_x,
-                      train_y,
+                      train_y_std,
                       train_Yvar=s2,
                       outcome_transform=None,
                       #add_noise=True,
@@ -92,8 +107,15 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     fit_gpytorch_mll(mll)
 
     #Fit Noise Model
+    ##Standardise sigma2 hat
+
+    #Log sigma2 to ensure nonnegative values
+    sigma2_hat_log = sigma2_hat.log()
+
+    sigma2_hat_std = sigma2_handler.standardise_and_update(sigma2_hat_log)
+
     gp_noise = SingleTaskGP(train_x,
-                            sigma2_hat,
+                            sigma2_hat_std,
                             train_Yvar=torch.zeros_like(sigma2_hat),
                             outcome_transform=None,
                             )
@@ -103,7 +125,9 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     #Puts model into dictionary
     model = {'f':gp,'eps':gp_noise}
 
-    return model
+    #Puts transformers into dictionary
+    out_transform = {'f':y_handler,'eps':sigma2_handler}
+    return model, out_transform
 
 
 def get_k_inital_evals(k,n,target_function):
@@ -193,7 +217,7 @@ def plot_GP(test_x,
     if f_name is not None:
         plt.savefig(f_name, dpi=500,bbox_inches = "tight")
 
-    plt.show()        
+    #plt.show()        
 
 def poster_plot(
     N_points,
@@ -202,6 +226,7 @@ def poster_plot(
     acqf,
     n_vals,
     model,
+    test_function,
     phi=0,
     theta=1,
     fig_title=None,
@@ -292,12 +317,13 @@ def poster_plot(
         plt.savefig(f_name, dpi=500, bbox_inches="tight")
 
     plt.show()
-TEST_FUNCTION = test_function_2
+
 def plot_iter_output(N_points,
                      train_x,
                      train_y,
                      model,
-                     test_function = TEST_FUNCTION,
+                     output_handler,
+                     test_function,
                      fig_title=None,
                      f_name=None,
                      new_point = True):
@@ -310,6 +336,7 @@ def plot_iter_output(N_points,
     true_y = test_function(test_x)
     preds = model['f'].posterior(test_x,observation_noise=False) 
     
+    true_y_std = output_handler['f'].standardise(true_y)
     
     plot_GP(test_x=test_x,
             train_x=train_x,
@@ -506,7 +533,7 @@ def AF_output(N_points,
     X = torch.stack([
         test_x.repeat(len(n_vals)),          # column 0
         n_vals.repeat_interleave(len(test_x))  # column 1
-    ], dim=1).unsqueeze(1)
+    ], dim=1)
     
     AF_vals = acqf(X)
 
@@ -567,7 +594,7 @@ def plot_AF(N_points,
     plt.show()
 
 
-from botorch.optim.optimize import optimize_acqf,optimize_acqf_mixed
+from botorch.optim.optimize import optimize_acqf
 
 
 def optimise_acqf_get_candidate(acq_func, bounds,num_restarts=25,raw_samples=500):
@@ -665,27 +692,7 @@ def f_best_acq(strategy, bounds, num_restarts = 25,raw_samples=500):
 from DES_acqfs import AEI_fq
 from botorch.acquisition import PosteriorMean,ExpectedImprovement
 
-'''
-Linear cost function is:
 
-c(n) = 1/(ax+b)
-where a and b are the linear coeffs
-'''
-a = 0.1
-b = 1
-lin_cost_func = InverseLinearCostModel([a,b])
-
-# State Bounds
-
-BOUNDS = torch.tensor([[0,3] * 1,
-                        [1,100] * 1],
-                        dtype=torch.double,
-                        device=torch.device("cpu")) # Bounds of combined X and N space
-
-X_BOUNDS = torch.tensor([[0] * 1,
-                        [1] * 1],
-                        dtype=torch.double,
-                        device=torch.device("cpu")) # Bounds of combined X and N space
 
 class BODES_loop_initialiser:
 
@@ -704,9 +711,9 @@ class BODES_loop_initialiser:
                                                                   self.n,
                                                                   self.target_function_class)
 
-        model = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
+        model,output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
 
-        return model,train_x,train_n,train_y,train_sigma2
+        return model,train_x,train_n,train_y,train_sigma2,output_handle
 
 
 class run_vanilla_exp_itr:
@@ -716,8 +723,8 @@ class run_vanilla_exp_itr:
                  AF, #Expected Improvement
                  f_best_strat, #SEI
                  model_call_func, #same with modifications
-                 target_function,
-                 bounds=X_BOUNDS):
+                 cost_function, #Does nothing
+                 bounds):
 
         r"""Single iteration of BODES
             Args:
@@ -735,12 +742,12 @@ class run_vanilla_exp_itr:
         self.n = torch.tensor([n]).reshape(1,1)
         self.f_best_strat = f_best_strat
         self.model_call_func = model_call_func
-        self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
+        # self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
         self.bounds = bounds
 
-    def run_iter(self,model,train_x,train_n,train_y,train_sigma2):
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
         
-        f_best = self.f_best_strat(model)
+        f_best = self.f_best_strat(model,self.bounds)
 
         #Initialise AF for candidate selection
         AF = self.AF(model=model['f'],
@@ -748,10 +755,11 @@ class run_vanilla_exp_itr:
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
         ## Optimise AF and get candidates
-        new_x, _ = candidate_acq(AF,self.bounds)
+        new_x, _ = candidate_acq(AF,self.bounds[:,0].view(-1,1))
+        #Removes number of replication bounds from vanilla
 
         ## Update Dataset (constant n)
-        new_y, new_sigma2 = self.run_sim(new_x,self.n)
+        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,self.n)
 
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,self.n])
@@ -759,21 +767,25 @@ class run_vanilla_exp_itr:
         train_sigma2 = torch.cat([train_sigma2,new_sigma2])
 
         ## Re-condtion model
-        model = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
 
-        return model, train_x, train_n, train_y, train_sigma2
+        return model, train_x, train_n, train_y, train_sigma2,output_handle
 
 class run_DES_exp_itr:
 
     def __init__(self,
+                 n,
                  AF,
                  f_best_strat,
                  model_call_func,
-                 target_function,
-                 bounds=BOUNDS):
+                #  target_function,
+                 cost_function,
+                 bounds):
 
         r"""Single iteration of BODES
             Args:
+                n: int
+                does nothing
                 AF: AnalyticalAcquisition Function Type
                     candidate sets X will be)
                 posterior_transform: A PosteriorTransform. If using a multi-output model,
@@ -787,18 +799,19 @@ class run_DES_exp_itr:
         self.AF = AF
         self.f_best_strat = f_best_strat
         self.model_call_func = model_call_func
-        self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
+        # self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
+        self.cost_function = cost_function
         self.bounds= bounds
 
-    def run_iter(self,model,train_x,train_n,train_y,train_sigma2):
+
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
         
-        f_best = self.f_best_strat(model)
+        f_best = self.f_best_strat(model,self.bounds)
 
         #Initialise AF for candidate selection
-        AF = self.AF(model_f=model['f'],
-                     model_eps=model['eps'],
+        AF = self.AF(model = model,
                      best_f=f_best, #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
-                     cost_model=lin_cost_func,
+                     cost_model=self.cost_function,
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
         ## Optimise AF and get candidates
@@ -809,7 +822,7 @@ class run_DES_exp_itr:
         ## Update Dataset
         new_x = xn_new[0,0].reshape(1,1)
         new_n = xn_new[0,1].reshape(1,1)
-        new_y, new_sigma2 = self.run_sim(new_x,new_n)
+        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,new_n)
 
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,new_n])
@@ -817,98 +830,176 @@ class run_DES_exp_itr:
         train_sigma2 = torch.cat([train_sigma2,new_sigma2])
 
         ## Re-condtion model
-        model = self.model_call_func(train_x,train_n,train_y,train_sigma2)
-
-        return model, train_x, train_n, train_y, train_sigma2
+        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
 
 
-def get_best_fs_AEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
+
+        return model, train_x, train_n, train_y, train_sigma2,output_handle
+
+class run_IG_exp_itr:
+
+    def __init__(self,
+                 n,
+                 AF,
+                 model_call_func,
+                 cost_function,
+                 bounds,
+                 num_mv_samples = 10,
+                 set_size = 10,
+                 ):
+
+        r"""Single iteration of BODES
+            Args:
+                n: int
+                    does nothing
+                AF: AnalyticalAcquisition Function Type
+                    candidate sets X will be)
+                posterior_transform: A PosteriorTransform. If using a multi-output model,
+                    a PosteriorTransform that transforms the multi-output posterior into a
+                    single-output posterior is required.
+                maximize: If True, consider the problem a maximization problem. Note
+                    that if `maximize=False`, the posterior mean is negated. As a
+                    consequence `optimize_acqf(PosteriorMean(gp, maximize=False))`
+                    actually returns -1 * minimum of the posterior mean.
+            """
+        self.AF = AF
+        self.model_call_func = model_call_func
+        self.bounds= bounds
+        self.discrete_space = torch.linspace(bounds[0,0],bounds[1,0],set_size).unsqueeze(1)
+        self.num_mv_samples = num_mv_samples
+        self.cost_function = cost_function
+    
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
+        
+        #Initialise AF for candidate selection
+        AF = self.AF(model = model,
+                     cost_model=self.cost_function,
+                     num_mv_samples = self.num_mv_samples,
+                     candidate_set = self.discrete_space,
+                     maximize=MAXIMIZE) #Define Cost aware and penalised EI
+
+        ## Optimise AF and get candidates
+        xn_new, _ = candidate_acq(AF,self.bounds)
+
+        # The selected n point is rounded to the nearest integer
+        xn_new[0,1] = xn_new[0,1].round(decimals=0)
+        ## Update Dataset
+        new_x = xn_new[0,0].reshape(1,1)
+        new_n = xn_new[0,1].reshape(1,1)
+        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,new_n)
+        
+        train_x = torch.cat([train_x,new_x])
+        train_n = torch.cat([train_n,new_n])
+        train_y = torch.cat([train_y,new_y])
+        train_sigma2 = torch.cat([train_sigma2,new_sigma2])
+
+        ## Re-condtion model
+        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+
+        return model, train_x, train_n, train_y, train_sigma2,output_handle
+
+
+
+def get_best_f_AEI(model,bounds,maximise=MAXIMIZE):
 
     acq_strat_AEI = AEI_fq(model['f'],maximize=maximise)
-    _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds)
+    _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
 
     return f_best
 
-def get_best_f_SEI(model,maximise=MAXIMIZE,bounds=X_BOUNDS):
+def get_best_f_SEI(model,bounds,maximise=MAXIMIZE):
 
     #Posterior MEaximise
     acq_strat_SEI = PosteriorMean(model['f'],maximize=maximise) 
-    x_best,f_best = f_best_acq(acq_strat_SEI,bounds=bounds) #f* as posteriormin
+    x_best,f_best = f_best_acq(acq_strat_SEI,bounds=bounds[:,0].view(-1,1)) #f* as posteriormin
 
     return x_best,f_best
 
 
-# def trace(text):
-#     '''
-#     Helper Function
-#     '''
-
 class experiment_handler:
 
-    def __init__(self,
-                 loop_initialiser_func,
+    def __init__(self, 
+                 target,
                  BO_handler):
         
+        self.bounds = BO_handler.bounds
         self.BO_handler = BO_handler.run_iter
-        self.initialise = loop_initialiser_func.initialise
+        self.target = target
     
     
-    def run_T_BO_iters(self,T,seed):
+    def run_T_BO_iters(self,T,
+                            train_x,
+                            train_n,
+                            train_y,
+                            train_sigma2,
+                            rng_state):
+        
         #Set Experiment seed
-        torch.manual_seed(seed)
-
+        rng_state = rng_state.byte()
+        self.target.update_rng_state(rng_state)
         #Obtain model and initial evaluations
-        sk_model,train_x,train_n,train_y,train_sigma2 = self.initialise()
-
+        sk_model, output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
+        
         #Best f_acqf
-        x_strs, f_strs = get_best_f_SEI(sk_model)
+        x_strs, f_strs = get_best_f_SEI(sk_model,bounds=self.bounds)
 
-        f_strs = f_strs.reshape(1,1)
+        #Unstandardise f_str
+        f_strs = output_handle['f'].unstandardise(f_strs.reshape(1,1))
 
 
         for t in range(0,T):
             print(f'Starting iter {t} of {T}....\n')
             #Iteration Funciton
-            sk_model,train_x,train_n,train_y,train_sigma2 = self.BO_handler(sk_model,
-                                                                            train_x,
-                                                                            train_n,
-                                                                            train_y,
-                                                                            train_sigma2)   
+            sk_model,train_x,train_n,train_y,train_sigma2,output_handle = self.BO_handler(sk_model,
+                                                                                            train_x,
+                                                                                            train_n,
+                                                                                            train_y,
+                                                                                            train_sigma2,
+                                                                                            self.target)   
             #Best f_acqf
-            x_best, f_best_SEI = get_best_f_SEI(sk_model)
+            x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds)
+            f_best_SEI = output_handle['f'].unstandardise(f_best_SEI.reshape(1,1))
+            
             #Append best evals to the list
             x_strs = torch.cat([x_strs,x_best])
             f_strs = torch.cat([f_strs,f_best_SEI.reshape(1,1)])
             
         return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
     
-    def run_MT_BO_macros(self,M,T,master_seed = 12345):
-        torch.manual_seed(master_seed)
+    def run_MT_BO_macros(self,M,
+                              T,
+                              train_x,
+                              train_n,
+                              train_y,
+                              train_sigma2,
+                              rngs,
+                              ):
+
         xs = []
         ns =[]
         ys =[]
         sigma2s = []
         x_strs = []
         f_strs =[]
-        
-        seeds = torch.randint(1000,100000,(M,))
-
         #TODO seed splitter for m replications
         for m in range(0,M):
-            seed = seeds[m].item()
-            print(f'Starting macroreplication {m} of {M}....\n')
-            print(f'\nFor seed {seed}\n')
-            train_x,train_n,train_y,train_sigma2,x_str,f_str =self.run_T_BO_iters(T,seed)
+            print(f'Starting macroreplication {m+1} of {M}....\n')
+
+            out_x,out_n,out_y,out_sigma2,x_str,f_str =self.run_T_BO_iters(T,
+                                                                                  train_x[m],
+                                                                                  train_n[m],
+                                                                                  train_y[m],
+                                                                                  train_sigma2[m],
+                                                                                  rngs[m])
 
             #Append all data to lists
-
-            xs.append(train_x)
-            ns.append(train_n)
-            ys.append(train_y)
-            sigma2s.append(train_sigma2)
+            xs.append(out_x)
+            ns.append(out_n)
+            ys.append(out_y)
+            sigma2s.append(out_sigma2)
             x_strs.append(x_str)
             f_strs.append(f_str)
-
+        
         xs = torch.stack(xs)
         ns = torch.stack(ns)
         ys = torch.stack(ys)
@@ -920,117 +1011,24 @@ class experiment_handler:
 
 
 
+#Pre-construct Experiments
+from functools import partial
 
-#Experimental Parameters
-T = 10 #Number of iterations
-M = 10 #Number of MacroReplications
+VANILLA = partial(run_vanilla_exp_itr,
+                  AF=ExpectedImprovement,
+                  f_best_strat=get_best_f_SEI,
+                  model_call_func=get_stoch_kriging_model)
 
-# Constants
-k = 2 #number of samples points
-n = 5 #flat number of replications
+AEI = partial(run_DES_exp_itr,
+                AF=DES_EI,
+                f_best_strat=get_best_f_AEI,
+                model_call_func=get_stoch_kriging_model)
 
-#Initalise Target Function For Experiments
-target = Target_function(test_function_2,
-                         heteroscedastic_noise)
-
-BODES = run_DES_exp_itr(DES_EI,
-                        get_best_fs_AEI,
-                        get_stoch_kriging_model,
-                        target)
-
-BODES_LI = BODES_loop_initialiser(k,
-                                  n,
-                                  target)
+IG = partial(run_IG_exp_itr,
+            AF=BODES_IG,
+            model_call_func=get_stoch_kriging_model)
 
 
-#Test
-model,train_x,train_n,train_y,train_sigma2 =BODES_LI.initialise()
-
-
-from DES_IG_acqf import BODES_IG
-CLAMP_LB = 1e-8
-
-IG = BODES_IG(model,
-              lin_cost_func,
-              train_x) #Candidate set [nxd] i.e. n - number of points d - dimension of design
-
-out = AF_output(1,IG,torch.tensor([10]))
-
-plot_AF(100,IG,torch.tensor([3,5,8,10,50]))
-
-plot_iter_output(100,train_x,train_y,model,new_point=False)
-
-# N_points= 10
-# test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-
-# n_vals = torch.tensor([5])
-# # Build X
-# X = torch.stack([
-#     test_x.repeat(len(n_vals)),          # column 0
-#     n_vals.repeat_interleave(len(test_x))  # column 1
-# ], dim=1).unsqueeze(1)
-# print(X.shape)
-
-# #Recieve X as shape [k,1,2]
-
-# #Split off N leaving X as [k,1,1]
-# N = X[...,-1] #shape [k,1]
-# X_in = X[...,:-1] #shape [k,1,1]
-
-# #Extract each relevant model
-# model_f = model['f']
-# model_eps = model['eps']
-
-# # Compute the posterior of both noise and latent model
-# posterior_f = model_f.posterior(
-#     X=X_in.unsqueeze(-3),
-#     observation_noise=False,
-# )
-# posterior_eps = model_eps.posterior(
-#     X=X_in.unsqueeze(-3), #make [k,1,1,1]
-#     observation_noise=False,
-# )
-
-# # #Calculate predicted variance \sigma_eps^2
-# sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
-
-# mean_f = posterior_f.mean.view_as(sigma_2_eps)
-# sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
-# sigma_f = sigma_2_f.sqrt()
-
-# # # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
-# posterior_max_values = torch.rand([10,1])
-# normal = torch.distributions.Normal(
-#     torch.zeros(1, device=X.device, dtype=X.dtype),
-#     torch.ones(1, device=X.device, dtype=X.dtype),
-# )
-
-# # prepare max value quantities required by GIBBON
-# mvs = torch.transpose(posterior_max_values, 0, 1)
-# # 1 x s_M
-
-# normalized_mvs = (mvs - mean_f) / sigma_f
-# # # batch_shape x s_M
-
-# cdf_mvs = normal.cdf(normalized_mvs).clamp_min(CLAMP_LB)
-# pdf_mvs = torch.exp(normal.log_prob(normalized_mvs))
-# ratio = pdf_mvs / cdf_mvs
-
-
-# # # prepare squared correlation between current and target fidelity
-# rho = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
-
-# rhos_squared = torch.pow(rho,2)
-# print(rhos_squared.shape)
-# # batch_shape x 1
-
-# # # calculate quality contribution to the GIBBON acquisition function
-# inner_term = 1 - rhos_squared * ratio * (normalized_mvs + ratio)
-# acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
-# print(acq.shape)
-# # # average over posterior max samples
-# acq = acq.mean(dim=1)/lin_cost_func(N.squeeze(-1))
-
-# #Average over fantasies
-# # acq = acq.mean(dim=0)
-
+EXPERIMENTS = {'vanilla':VANILLA,
+               'AEI': AEI,
+               'IG':IG}
