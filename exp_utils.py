@@ -61,6 +61,19 @@ class output_handler:
         
         '''
         return y_std*self.sig_std + self.mu_std
+
+    def log_transform(self,sigma2):
+
+        return sigma2.log()
+    
+    def inv_log_transform(self,log_sigma2,log_sigma2_var):
+        """
+        Inverse transformation on GP output.
+        
+        :param log_sigma2: Description
+        :param log_sigma2_var: Description
+        """
+        return torch.exp(log_sigma2 + 0.5*log_sigma2_var)
     
 def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     '''
@@ -116,7 +129,7 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
 
     gp_noise = SingleTaskGP(train_x,
                             sigma2_hat_std,
-                            train_Yvar=torch.zeros_like(sigma2_hat),
+                            train_Yvar=torch.full_like(sigma2_hat,1e-16),
                             outcome_transform=None,
                             )
     mll = ExactMarginalLogLikelihood(gp_noise.likelihood,gp_noise)
@@ -715,7 +728,7 @@ class BODES_loop_initialiser:
 
         return model,train_x,train_n,train_y,train_sigma2,output_handle
 
-
+#TODO: Note too self. In future use an abstract baseclass when using the same model three times
 class run_vanilla_exp_itr:
 
     def __init__(self,
@@ -745,7 +758,7 @@ class run_vanilla_exp_itr:
         # self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
         self.bounds = bounds
 
-    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform): #Here OT does nothing
         
         f_best = self.f_best_strat(model,self.bounds)
 
@@ -804,14 +817,15 @@ class run_DES_exp_itr:
         self.bounds= bounds
 
 
-    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform):
         
-        f_best = self.f_best_strat(model,self.bounds)
+        f_best = self.f_best_strat(model,output_transform,self.bounds)
 
         #Initialise AF for candidate selection
         AF = self.AF(model = model,
                      best_f=f_best, #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
                      cost_model=self.cost_function,
+                     output_transform=output_transform,
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
         ## Optimise AF and get candidates
@@ -869,11 +883,12 @@ class run_IG_exp_itr:
         self.num_mv_samples = num_mv_samples
         self.cost_function = cost_function
     
-    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function):
+    def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform):
         
         #Initialise AF for candidate selection
         AF = self.AF(model = model,
                      cost_model=self.cost_function,
+                     output_transform= output_transform,
                      num_mv_samples = self.num_mv_samples,
                      candidate_set = self.discrete_space,
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
@@ -900,20 +915,35 @@ class run_IG_exp_itr:
 
 
 
-def get_best_f_AEI(model,bounds,maximise=MAXIMIZE):
+def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
 
-    acq_strat_AEI = AEI_fq(model['f'],maximize=maximise)
+    acq_strat_AEI = AEI_fq(model['f'],output_transform,maximize=maximise)
     _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
-
+    print(f"f_best={f_best}\n")
     return f_best
 
-def get_best_f_SEI(model,bounds,maximise=MAXIMIZE):
-
+def get_best_f_SEI(model,bounds,maximise=MAXIMIZE,output_transform=None):
+    """
+    Docstring for get_best_f_SEI
+    
+    :param model: Description
+    :param bounds: Description
+    :param maximise: Description
+    :param output_transform: Description
+    """
     #Posterior MEaximise
     acq_strat_SEI = PosteriorMean(model['f'],maximize=maximise) 
     x_best,f_best = f_best_acq(acq_strat_SEI,bounds=bounds[:,0].view(-1,1)) #f* as posteriormin
 
-    return x_best,f_best
+    #TODO transform output here
+    f_best = f_best.reshape(1,1)
+    if output_transform is not None:
+
+        return x_best,output_transform['f'].unstandardise(f_best)
+    else:
+        return x_best,f_best
+    
+
 
 
 class experiment_handler:
@@ -941,12 +971,9 @@ class experiment_handler:
         sk_model, output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
         
         #Best f_acqf
-        x_strs, f_strs = get_best_f_SEI(sk_model,bounds=self.bounds)
+        x_strs, f_strs = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
 
-        #Unstandardise f_str
-        f_strs = output_handle['f'].unstandardise(f_strs.reshape(1,1))
-
-
+  
         for t in range(0,T):
             print(f'Starting iter {t} of {T}....\n')
             #Iteration Funciton
@@ -955,14 +982,14 @@ class experiment_handler:
                                                                                             train_n,
                                                                                             train_y,
                                                                                             train_sigma2,
-                                                                                            self.target)   
+                                                                                            self.target,
+                                                                                            output_handle)   
             #Best f_acqf
-            x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds)
-            f_best_SEI = output_handle['f'].unstandardise(f_best_SEI.reshape(1,1))
-            
+            x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
+          
             #Append best evals to the list
             x_strs = torch.cat([x_strs,x_best])
-            f_strs = torch.cat([f_strs,f_best_SEI.reshape(1,1)])
+            f_strs = torch.cat([f_strs,f_best_SEI])
             
         return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
     

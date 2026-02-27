@@ -6,9 +6,8 @@ study:
   
 models:
   - vanilla
-  - IG
   - AEI
-
+  - IG
 
 BO:
   acqf_id: 0
