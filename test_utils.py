@@ -266,10 +266,20 @@ have to be determined. IT is quite easy to do this but modifications are needed:
     - DES code should output its execution time to be fed into the code
     - 
 '''
+
 TEST_FUNCTION_DIAL = [test_function_1,
                       test_function_2]
 
 NOISE_FUNCTION_DIAL =[noise_function_1,
                       noise_function_2]
 
+'''
+Store test function names to be used in report writing.
+Don't forget to change these equations should you inlcude new test functions
+or remove any.
+'''
 
+TEST_FUNCTION_NAMES = ["f(x) = \\sin(5x) + \\cos(7x)",
+                       "f(x) = -(\\sin(5x) + \\cos(7x))"]
+NOISE_FUNCTION_NAMES = nf_md_dial = ["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
+                                     "\\sigma^2_{\\varepsilon}(x) = \\tau^2"]

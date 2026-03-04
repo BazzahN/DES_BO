@@ -3,7 +3,6 @@ import argparse
 import yaml
 from pathlib import Path
 from test_utils import Target_Function,get_k_inital_evals,NOISE_FUNCTION_DIAL,TEST_FUNCTION_DIAL
-
 tkwargs = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
@@ -25,7 +24,7 @@ def main():
     # parser.add_argument("--outdir", required=True)
     args = parser.parse_args()
 
-    with open(args.config) as f:
+    with open(args.config,'r') as f:
         config = yaml.safe_load(f)
 
     exp_name = config["experiment_name"]
@@ -98,6 +97,15 @@ def main():
     torch.save(test_x,outdir / f"test_x.pt")
     torch.save(test_y,outdir / f"test_y.pt")
     torch.save(test_sigma2,outdir / f"test_sigma2.pt")
+
+    #Obtain max value
+    try:
+        res = config['optim']
+    except:
+        config['optim'] = test_y.max().item()
+        with open(args.config,'w') as f:
+            yaml.safe_dump(config,f)
+
 
 
 if __name__ == "__main__":
