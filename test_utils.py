@@ -151,7 +151,8 @@ class Target_Function:
                  noise_function,
                  phi,
                  tau,
-                 rng_state):
+                 rng_state= torch.Generator().get_state() #Default rng state
+                 ):
         
         self.test_function = test_function
         self.noise_function = noise_function
@@ -281,5 +282,5 @@ or remove any.
 
 TEST_FUNCTION_NAMES = ["f(x) = \\sin(5x) + \\cos(7x)",
                        "f(x) = -(\\sin(5x) + \\cos(7x))"]
-NOISE_FUNCTION_NAMES = nf_md_dial = ["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
-                                     "\\sigma^2_{\\varepsilon}(x) = \\tau^2"]
+NOISE_FUNCTION_NAMES =["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
+                        "\\sigma^2_{\\varepsilon}(x) = \\tau^2"]
