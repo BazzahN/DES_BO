@@ -239,7 +239,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
         else:
              self.likelihood = likelihood
  
-        self._desired_num_outputs = 2 # By default it will use 2 outputs for the posterior 
+        self._desired_num_outputs = 1 # By default it will use 2 outputs for the posterior 
 
     @property
     def num_outputs(self):
@@ -302,7 +302,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
             #TODO Added to pass to max value estimation function
             if latent_model:
                 idx = 1 #Latent function index.
-                dist = dist.__getitem__(...,idx) #Outputs the desired batch
+                dist = dist.__getitem__((...,idx)) #Outputs the desired batch
 
             posterior = GPyTorchPosterior(distribution=dist)
             
