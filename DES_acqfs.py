@@ -15,6 +15,7 @@ from botorch.utils.probability.utils import (
     phi,
 )
 from botorch.models.model import Model
+from HGP_utils import HeteroscedasticBOModel
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.utils.transforms import (
     average_over_ensemble_models,
@@ -48,23 +49,30 @@ def _noise_var_penalty(sigma_2_eps,sigma_2_f,n):
     return 1 - ratio.sqrt()
 
 
-def _transform_noise_GP(log_eps,log_eps_var,output_transform):
-    
-    #Unstandardise zeta(eps) -> eps
-    eps_log = output_transform['eps'].unstandardise(log_eps)
-    eps_v_log = log_eps_var * output_transform['eps'].sig_std
-    #Inverse transform log(eps) -> eps
-    eps_out = output_transform['eps'].inv_log_transform(eps_log,eps_v_log)
+def _inverse_log_transform(eps_log,eps_v_log,output_transform):
 
-    return eps_out
+    return output_transform.inv_log_transform(eps_log,eps_v_log)
 
-def _transform_signal_GP(f,f_var,output_transform):
+def _transform_GP(f,f_var,output_transform):
     
     #Unstandardise zeta(f)-> f
-    f_var = f_var * output_transform['f'].sig_std
-    f = output_transform['f'].unstandardise(f)
+    var_transform = f_var * output_transform.sig_std
+    mu_transform = output_transform.unstandardise(f)
 
-    return f,f_var
+    return mu_transform,var_transform
+
+
+def _model_type(model):
+    """
+    Function to ensure compatability with acquisition funciton.
+    This exposes the correct model and posterior based upon
+    the nature of the model used. If VIHGP then the model and 
+    its posterior are exposed. If SKHGP
+    """
+    if isinstance(model,HeteroscedasticBOModel):
+        return model,model.posterior, model.noise_posterior 
+    else:
+        return model['f'], model['f'].posterior, model['eps'].posterior
 
 
 class DES_EI(AnalyticAcquisitionFunction):
@@ -95,12 +103,18 @@ class DES_EI(AnalyticAcquisitionFunction):
                 single-output posterior is required.
             maximize: If True, consider the problem a maximization problem.
         """
-        super().__init__(model=model['f'], posterior_transform=posterior_transform)
+        model_f, model_f_posterior, model_eps_posterior = _model_type(model)
+
+        super().__init__(model=model_f, posterior_transform=posterior_transform)
         self.register_buffer("best_f", torch.as_tensor(best_f))
         self.output_transform = output_transform
         self.cost_model = cost_model
         self.maximize = maximize
-        self.model_eps = model['eps']
+        # self.model_eps = model['eps']
+
+        #Assign Posteriors
+        self.model_eps_posterior = model_eps_posterior
+        self.model_f_posterior = model_f_posterior
 
     @t_batch_mode_transform(expected_q=1)        
     def forward(self, X: Tensor) -> Tensor:
@@ -122,7 +136,7 @@ class DES_EI(AnalyticAcquisitionFunction):
         N = X[...,-1] #Assumes n input is the extra dimension
         X_in = X[...,:-1]
         #Calculate Posterior of noise model for variance predictions
-        posterior_eps = self.model_eps.posterior(
+        posterior_eps = self.model_eps_posterior(
             X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
         )
         
@@ -131,10 +145,15 @@ class DES_EI(AnalyticAcquisitionFunction):
         sigma_2_eps_var = posterior_eps.variance.clamp_min(1e-12).view(sigma_2_eps.shape)
 
         ##Unstandardise Noise GP preds
-        sigma_2_eps = _transform_noise_GP(sigma_2_eps,sigma_2_eps_var,self.output_transform)
-
+        #NOTE Dirty, Evil Code
+        if type(self.output_transform) is dict:
+            sigma_2_eps,sigma_2_eps_var = _transform_GP(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps'])
+            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps']) * self.output_transform['f'].sig_std
+        else:
+            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform) * self.output_transform.sig_std
+        
         #Calculates posterior for latent function f
-        posterior_f = self.model.posterior(
+        posterior_f = self.model_f_posterior(
             X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
         )
         # Calculate predicted f and \sigma_f^2
@@ -143,8 +162,11 @@ class DES_EI(AnalyticAcquisitionFunction):
         sigma_2_f = posterior_f.variance.clamp_min(1e-12).view(mean.shape)
   
         ##Unstandardise Signal GP preds
-        mean,sigma_2_f = _transform_signal_GP(mean,sigma_2_f,self.output_transform)
-
+        if type(self.output_transform) is dict:
+            mean,sigma_2_f = _transform_GP(mean,sigma_2_f,self.output_transform['f'])
+        else:
+            mean,sigma_2_f = _transform_GP(mean,sigma_2_f,self.output_transform)
+            
         #Calculate Augmented Expected Improvement
         u = _scaled_improvement(mean, sigma_2_f.sqrt(), self.best_f, self.maximize)
 
@@ -214,7 +236,10 @@ class AEI_fq(AnalyticAcquisitionFunction):
         mean, sigma = self._mean_and_sigma(X)  # (b1 x ... x bk) x 1
         
         #Transfomr mean and sigma GP predictions
-        mean,sigma = _transform_signal_GP(mean,sigma,self.output_transform)
+        if type(self.output_transform) is dict:
+            mean,sigma = _transform_GP(mean,sigma,self.output_transform['f'])
+        else:
+            mean,sigma = _transform_GP(mean,sigma,self.output_transform)
        
         f_q = mean - sigma
         if not self.maximize:
@@ -284,9 +309,9 @@ class BODES_IG(MaxValueBase):
                 Not required if the model is an instance of a GPyTorch ExactGP model.
         """
 
-        
+        model_f, model_f_posterior, model_eps_posterior = _model_type(model)
         super().__init__(
-            model=model['f'], #NOTE:CHANGE: send only the latent model to MaxValueBase
+            model=model_f, #NOTE:CHANGE: send only the latent model to MaxValueBase
             candidate_set=candidate_set,
             num_mv_samples=num_mv_samples,
             posterior_transform=posterior_transform,
@@ -295,7 +320,10 @@ class BODES_IG(MaxValueBase):
             X_pending=X_pending,
             train_inputs=train_inputs,
         )
-        self.model_eps = model['eps']
+        #Assign Posteriors
+        self.model_eps_posterior = model_eps_posterior
+        self.model_f_posterior = model_f_posterior
+
         self.output_transform = output_transform
         self.cost_model = cost_model
         self.set_X_pending(X_pending)
@@ -319,12 +347,12 @@ class BODES_IG(MaxValueBase):
         X_in = X[...,:-1] #shape [k,1,1]
 
         # Compute the posterior of both noise and latent model
-        posterior_f = self.model.posterior(
+        posterior_f = self.model_f_posterior(
             X=X_in.unsqueeze(-3),
             observation_noise=False,
             posterior_transform=self.posterior_transform,
         )
-        posterior_eps = self.model_eps.posterior(
+        posterior_eps = self.model_eps_posterior(
             X=X_in.unsqueeze(-3),#make [k,1,1,1]
             observation_noise=False,
             posterior_transform=self.posterior_transform,
@@ -332,18 +360,29 @@ class BODES_IG(MaxValueBase):
         )
 
         #Calculate predicted variance \sigma_eps^2
-        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
+        #sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
+
+        #NOTE Lost a squeeze.Temporary fix. VIHGP looses a dimension for some reason
+        sigma_2_eps = posterior_eps.mean.squeeze(-1) # make [k,1]
         sigma_2_eps_var = posterior_eps.variance.clamp_min(CLAMP_LB).view_as(sigma_2_eps)
 
         ##Transform predicted variance
-        sigma_2_eps = _transform_noise_GP(sigma_2_eps,sigma_2_eps_var,self.output_transform)
-
-        #Calculate predictd mean
+        if type(self.output_transform) is dict:
+            sigma_2_eps,sigma_2_eps_var = _transform_GP(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps'])
+            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps']) * self.output_transform['f'].sig_std
+        else:
+            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform) * self.output_transform.sig_std
+        
+        #Calculate predicted mean
         mean_f = posterior_f.mean.view_as(sigma_2_eps)
         sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
         
         ##transform predicted mean
-        mean_f,sigma_2_f = _transform_signal_GP(mean_f,sigma_2_f,self.output_transform)
+        
+        if type(self.output_transform) is dict:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform['f'])
+        else:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform)
         
         sigma_f = sigma_2_f.sqrt()
 
@@ -360,7 +399,11 @@ class BODES_IG(MaxValueBase):
         mvs = torch.transpose(self.posterior_max_values, 0, 1)
         
         ##Transform max value quantities
-        mvs,_ = _transform_signal_GP(mvs,mvs,self.output_transform)
+        if type(self.output_transform) is dict:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform['f'])
+        else:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform)
+        
         
   
         # 1 x s_M
@@ -417,72 +460,3 @@ class BODES_IG(MaxValueBase):
         """
        
         return print('no never')
-    
-
-# class ExpectedImprovement(AnalyticAcquisitionFunction):
-#     r"""Single-outcome Expected Improvement (analytic).
-
-#     Computes classic Expected Improvement over the current best observed value,
-#     using the analytic formula for a Normal posterior distribution. Unlike the
-#     MC-based acquisition functions, this relies on the posterior at single test
-#     point being Gaussian (and require the posterior to implement `mean` and
-#     `variance` properties). Only supports the case of `q=1`. The model must be
-#     single-outcome.
-
-#     `EI(x) = E(max(f(x) - best_f, 0)),`
-
-#     where the expectation is taken over the value of stochastic function `f` at `x`.
-
-#     Example:
-#         >>> model = SingleTaskGP(train_X, train_Y)
-#         >>> EI = ExpectedImprovement(model, best_f=0.2)
-#         >>> ei = EI(test_X)
-
-#     NOTE: It is strongly recommended to use LogExpectedImprovement instead of regular
-#     EI, as it can lead to substantially improved BO performance through improved
-#     numerics. See https://arxiv.org/abs/2310.20708 for details.
-#     """
-
-#     def __init__(
-#         self,
-#         model: Model,
-#         output_transform, #Personal Outptut transfomr handler
-#         best_f: float | Tensor,
-#         posterior_transform: PosteriorTransform | None = None,
-#         maximize: bool = True,
-#     ):
-#         r"""Single-outcome Expected Improvement (analytic).
-
-#         Args:
-#             model: A fitted single-outcome model.
-#             best_f: Either a scalar or a `b`-dim Tensor (batch mode) representing
-#                 the best function value observed so far (assumed noiseless).
-#             posterior_transform: A PosteriorTransform. If using a multi-output model,
-#                 a PosteriorTransform that transforms the multi-output posterior into a
-#                 single-output posterior is required.
-#             maximize: If True, consider the problem a maximization problem.
-#         """
-#         legacy_ei_numerics_warning(legacy_name=type(self).__name__)
-#         super().__init__(model=model, posterior_transform=posterior_transform)
-#         self.output_transform = output_transform
-#         self.register_buffer("best_f", torch.as_tensor(best_f))
-#         self.maximize = maximize
-
-#     @t_batch_mode_transform(expected_q=1)
-#     @average_over_ensemble_models
-#     def forward(self, X: Tensor) -> Tensor:
-#         r"""Evaluate Expected Improvement on the candidate set X.
-
-#         Args:
-#             X: A `(b1 x ... bk) x 1 x d`-dim batched tensor of `d`-dim design points.
-#                 Expected Improvement is computed for each point individually,
-#                 i.e., what is considered are the marginal posteriors, not the
-#                 joint.
-
-#         Returns:
-#             A `(b1 x ... bk)`-dim tensor of Expected Improvement values at the
-#             given design points `X`.
-#         """
-#         mean, sigma = self._mean_and_sigma(X)  # `(b1 x ... bk) x 1`
-#         u = _scaled_improvement(mean, sigma, self.best_f, self.maximize)
-#         return (sigma * _ei_helper(u)).squeeze(-1)
