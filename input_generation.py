@@ -31,7 +31,10 @@ def main():
     study_args = config['study']
     gen_args = config["problem"]
     plot_args = config["plots"]
-
+    GP_arg = config["GP"]
+    
+    #How to generate data depending on GP used
+    
     ##Arguments
     M = study_args['M']
 
@@ -60,10 +63,17 @@ def main():
 
     Generators = spawn_generators(seed,M)
 
+    #Generate Correct data based on GP used
+    if GP_arg == "sk":
+        moments = 1
+        shape_tuple = (M,k,1)
+    else:
+        moments = 0
+        shape_tuple =(M,n,k,1)
 
-    train_x = torch.empty(size=(M,n,k,1))
+    train_x = torch.empty(size=shape_tuple)
     train_n = torch.empty(size=(M,k,1))
-    train_y = torch.empty(size=(M,n,k,1))
+    train_y = torch.empty(size=shape_tuple)
     train_sig2 = torch.empty(size=(M,k,1))
 
     rng_smple = Generators[0].get_state().size()
@@ -78,8 +88,7 @@ def main():
                                     rng_state=rng.get_state())
 
         # train_x,train_n,train_y,train_sig2,test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
-        train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max)
-
+        train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
         init_rng[i] = test_class.get_rng_state()
 
         ## Ouput Dataset D=(x,n,y,sigma2)

@@ -103,6 +103,9 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     y_handler = output_handler()
     sigma2_handler = output_handler()
 
+    print(f"train_x:{train_x}")
+    print(f"train_y: {train_y}")
+    print(f"train_sig2:{sigma2_hat}")
     #Standardise y input
     train_y_std = y_handler.standardise_and_update(train_y)
     sig_scale = 1 / y_handler.sig_std
@@ -123,10 +126,12 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     ##Standardise sigma2 hat
 
     #Log sigma2 to ensure nonnegative values
+    print(f"sigma2: {sigma2_hat}")
     sigma2_hat_log = sigma2_hat.log()
 
     sigma2_hat_std = sigma2_handler.standardise_and_update(sigma2_hat_log)
 
+    
     gp_noise = SingleTaskGP(train_x,
                             sigma2_hat_std,
                             train_Yvar=torch.full_like(sigma2_hat,1e-16),

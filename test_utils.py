@@ -206,12 +206,11 @@ class Target_Function:
         If moments =True then output the k length data set of locations, sample means
         and sample variances.
 
-        If moments = False then outptu the kxn length data set of locations and samples.
+        If moments = False then output the kxn length data set of locations and samples.
         '''
         if moments:
             y_out = y_evals.mean(0).unsqueeze(1)
             sigma2_out = y_evals.var(0).unsqueeze(1)
-
             return test_x, y_out,sigma2_out
         else:
             return test_x_expand.unsqueeze(-1), y_evals.unsqueeze(-1),0
@@ -231,7 +230,7 @@ class Target_Function:
 
         return test_x,f_out, sigma2_out
 
-
+#Now Depricated
 def get_k_inital_evals(k,n,target_function,x_min,x_max):
     '''
     Gets k inital observations for a flat n replications each  
