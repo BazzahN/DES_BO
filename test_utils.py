@@ -209,11 +209,11 @@ class Target_Function:
         If moments = False then output the kxn length data set of locations and samples.
         '''
         if moments:
-            y_out = y_evals.mean(0).unsqueeze(1)
-            sigma2_out = y_evals.var(0).unsqueeze(1)
+            y_out = y_evals.mean(0).unsqueeze(-1)
+            sigma2_out = y_evals.var(0).unsqueeze(-1)
             return test_x, y_out,sigma2_out
         else:
-            return test_x_expand.unsqueeze(-1), y_evals.unsqueeze(-1),0
+            return test_x_expand, y_evals,torch.zeros_like(y_evals)
     
     def eval_target_true(self,test_x):
 
@@ -277,6 +277,8 @@ def get_nxk_inital_evals(k,n,target_function,x_min,x_max,moments=0):
         Minimum bound of test function domain
     x_max: float
         Maximum bound of the test function domain
+    moments: bool
+        If true this will output the moments for n replications at each of the k points.
     '''
 
     #Generate k equally spaced training points
