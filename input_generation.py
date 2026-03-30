@@ -2,7 +2,7 @@ import torch
 import argparse
 import yaml
 from pathlib import Path
-from test_utils import Target_Function,get_k_inital_evals,NOISE_FUNCTION_DIAL,TEST_FUNCTION_DIAL
+from test_utils import Target_Function,get_nxk_inital_evals,NOISE_FUNCTION_DIAL,TEST_FUNCTION_DIAL
 tkwargs = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
@@ -61,9 +61,9 @@ def main():
     Generators = spawn_generators(seed,M)
 
 
-    train_x = torch.empty(size=(M,k,1))
+    train_x = torch.empty(size=(M,n,k,1))
     train_n = torch.empty(size=(M,k,1))
-    train_y = torch.empty(size=(M,k,1))
+    train_y = torch.empty(size=(M,n,k,1))
     train_sig2 = torch.empty(size=(M,k,1))
 
     rng_smple = Generators[0].get_state().size()
@@ -78,7 +78,7 @@ def main():
                                     rng_state=rng.get_state())
 
         # train_x,train_n,train_y,train_sig2,test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
-        train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
+        train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max)
 
         init_rng[i] = test_class.get_rng_state()
 
