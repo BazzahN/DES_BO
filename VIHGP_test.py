@@ -1,4 +1,4 @@
-from exp_utils import VI_HGP,run_IG_exp_itr
+from exp_utils import VI_HGP,run_IG_exp_itr,get_stoch_kriging_model
 from test_utils import Target_Function,NOISE_FUNCTION_DIAL,TEST_FUNCTION_DIAL,InverseLinearCostModel
 from pathlib import Path
 import yaml
@@ -61,6 +61,7 @@ for name in names:
     data_in[name] = load_in.to(**tkwargs)
 
 m = 0
+#NOTE When we move to n dimensions this code will have to change
 train_x = data_in['train_x'][m]
 train_n = data_in['train_n'][m]
 train_y = data_in['train_y'][m]
@@ -86,26 +87,40 @@ bounds = torch.tensor([[x_min,n_min] * 1,
 
 
 #FIt Model to data
-VI_HGP =VI_HGP(n_u=10,iters=800,standardise=False)
+VI_HGP =VI_HGP(n_u=5,iters=800,standardise=False,verbose=True)
 model_call = VI_HGP.get_VI_HGP_model
-hgp_model, out_transform = model_call(train_x,train_n,train_y,train_sigma2)
+hgp_model, out_transform = model_call(train_x.flatten().unsqueeze(-1),train_n,train_y.flatten().unsqueeze(-1),train_sigma2)
 
 
 from DES_acqfs import BODES_IG
-IG_exp = run_IG_exp_itr(n=1,
-                        AF=BODES_IG,
-                        model_call_func=model_call,
-                        cost_function=lin_cost_func,
-                        bounds=bounds,)
+# IG_exp = run_IG_exp_itr(n=1,
+#                         AF=BODES_IG,
+#                         model_call_func=model_call,
+#                         cost_function=lin_cost_func,
+#                         bounds=bounds,)
 
 
 
-# init_x = torch.linspace(0,1,500).reshape((500,1,1)).unsqueeze(-3)
-hgp_model,train_x,train_n,train_y,train_sigma2,out_transform = IG_exp.run_iter(hgp_model,
-                                                                              train_x,
-                                                                              train_n,
-                                                                              train_y,
-                                                                              train_sigma2,
-                                                                              target,
-                                                                              out_transform)
-   
+# # init_x = torch.linspace(0,1,500).reshape((500,1,1)).unsqueeze(-3)
+# hgp_model,train_x,train_n,train_y,train_sigma2,out_transform = IG_exp.run_iter(hgp_model,
+#                                                                               train_x,
+#                                                                               train_n,
+#                                                                               train_y,
+#                                                                               train_sigma2,
+#                                                                               target,
+#                                                                               out_transform)
+
+
+model,sk_transform = get_stoch_kriging_model(train_x.mean(dim=0),train_n,train_y.mean(dim=0),train_y.var(dim=0))
+
+init_x = torch.linspace(0,1,500).reshape((500,1))
+out_sk = model['f'].posterior(init_x)
+
+sk_mean = sk_transform['f'].unstandardise(out_sk.mean)
+out_hgp = hgp_model.posterior(init_x)
+hgp_mean = out_hgp.mean
+
+import matplotlib.pyplot as plt
+
+plt.plot(sk_mean.detach())
+plt.plot(hgp_mean.detach())

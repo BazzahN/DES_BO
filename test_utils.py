@@ -214,7 +214,7 @@ class Target_Function:
 
             return test_x, y_out,sigma2_out
         else:
-            return test_x_expand, y_evals,0
+            return test_x_expand.unsqueeze(-1), y_evals.unsqueeze(-1),0
     
     def eval_target_true(self,test_x):
 
@@ -258,6 +258,37 @@ def get_k_inital_evals(k,n,target_function,x_min,x_max):
     train_x, train_y, train_sigma2 = target_function.eval_target_noisy(train_x,train_n)
 
     return train_x,train_n,train_y,train_sigma2, target_function
+
+
+def get_nxk_inital_evals(k,n,target_function,x_min,x_max,moments=0):
+    '''
+    Gets nxk inital observations for a flat n replications each if moments=0.Else returns 
+    the moments for the dataset
+    Identical to get_k evals.
+
+    Inputs
+    ------
+    k: int,
+        Number of evaluation points
+    n: int
+        Number of replications taken at each point
+    target_function: Target_Function Object
+        The initiallised Target_Function Class Object
+    x_min: float
+        Minimum bound of test function domain
+    x_max: float
+        Maximum bound of the test function domain
+    '''
+
+    #Generate k equally spaced training points
+    train_x = torch.linspace(x_min,x_max,k).reshape(k,1).to(**tkwargs)
+    train_n = torch.ones_like(train_x) * n
+
+    #Generate y values from latent function plus heteroscedastic Gaussian noise
+    #Outputs train_y of shape [n,k]
+    train_x, train_y,train_sigma2 = target_function.eval_target_noisy(train_x,train_n,moments)
+
+    return train_x,train_n,train_y,train_sigma2,target_function
 
 
 #TODO Linear Regression linear cost model

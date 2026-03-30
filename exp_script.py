@@ -88,43 +88,6 @@ def main():
                             dtype=torch.double,
                             device=torch.device("cpu")) # Bounds of combined X and N space
    
-    # N_points=500
-    # test_x = torch.linspace(0,1,N_points).to(**tkwargs)
-    # true_y,true_sig2 = target.eval_target_true(test_x)
-    # true_sig = true_sig2.sqrt()
-
-    # upper = true_y + 2*true_sig
-    # lower = true_y - 2*true_sig
-
-    # if maximise:
-    #     optim_point = true_y.max()
-    #     optim_idx = true_y.argmax()
-    # else:
-    #     optim_point = true_y.min()
-    #     optim_idx = true_y.argmin()
-
-    # optim_sol = test_x[optim_idx]
-
-    # f, ax = plt.subplots(1, 2, figsize=(18, 6))
-    # ax[0].plot(test_x.numpy(),true_y.numpy(),label='$f(x)$')
-    # ax[0].plot(optim_sol.numpy(),optim_point.numpy(),'k*',label='optimal point')
-    # ax[0].fill_between(test_x.numpy(),lower.numpy(),upper.numpy(),alpha=0.2,label='True $+/- \sigma$',color='g')
-    # ax[0].set_xlabel('$x$')
-    # ax[0].set_ylabel('$f(x)$')
-    # ax[0].set_title('True Function with $\pm \sigma_{\epsilon}$')
-    # ax[0].legend()
-
-    # ax[1].plot(test_x.numpy(),true_sig.numpy(),label='True $\sigma(x)$',color='g')
-    # ax[1].set_xlabel('$x$')
-    # ax[1].set_ylabel('$\sigma{\epsilon}(x)$')
-    # ax[1].set_title(f'Heteroscedastic Noise|$\sigma^2_0 =${tau}')
-    # ax[1].legend()
-
-    # plt.suptitle('True Function with Heteroscedastic Variance Function')
-    # plt.savefig('BODES_test_problem.png',dpi=500,bbox_inches = 'tight')
-    #plt.show()
-
-
     #Step 4: Execute experiments
     names_out = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
     outdir = Path(exp_name + "/Data")
