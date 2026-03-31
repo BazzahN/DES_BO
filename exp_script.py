@@ -25,7 +25,7 @@ def main():
     exp_name = config["experiment_name"]
     study_args = config['study']
     gen_args = config["problem"]
-    plot_args = config["plots"]
+    misc_args = config["misc"]
     exp_models = config["models"]
     GP_arg = config["GP"]
     #Step 1: Import Arguments

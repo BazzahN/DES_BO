@@ -30,7 +30,7 @@ def main():
     exp_name = config["experiment_name"]
     study_args = config['study']
     gen_args = config["problem"]
-    plot_args = config["plots"]
+    misc_args = config["misc"]
     GP_arg = config["GP"]
     
     #How to generate data depending on GP used
@@ -53,7 +53,7 @@ def main():
     seed = gen_args['seed']
 
     # Output test function output for later comparison against prediction grid
-    n_grid = plot_args['n_grid']
+    n_grid = misc_args['n_grid']
 
     
     ##Generate Dataset D=(x,n,y,sigma2)
@@ -69,7 +69,7 @@ def main():
         shape_tuple = (M,k,1)
     else:
         moments = 0
-        shape_tuple =(M,n,k,1)
+        shape_tuple =(M,n*k,1)
 
     train_x = torch.empty(size=shape_tuple)
     train_n = torch.empty(size=(M,k,1))
