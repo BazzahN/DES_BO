@@ -302,10 +302,9 @@ class HeteroscedasticBOModel(GPyTorchModel):
             #TODO Added to pass to max value estimation function
             if latent_model:
                 idx = 0 #Latent function index.
-                dist = dist.__getitem__((...,idx)) #Outputs the desired batch
-
+                # Use batch-dimension indexing (not event-dimension) to preserve q/batch dims.
+                dist = dist[idx]
             posterior = GPyTorchPosterior(distribution=dist)
-            
             #NOTE Outcome and posterior transform is not and should not be used for my code.
             # All transformation is doen in the botorch code
             
@@ -348,9 +347,9 @@ class HeteroscedasticBOModel(GPyTorchModel):
             #     dist = self.likelihood(dist)
 
             #TODO Added to pass to max value estimation function
-            #if latent_model:
             idx = 1 #noise function index.
-            dist = dist.__getitem__((...,idx)) #Outputs the desired batch
+            # Use batch-dimension indexing (not event-dimension) to preserve q/batch dims.
+            dist = dist[idx]
 
             posterior = GPyTorchPosterior(distribution=dist)
             

@@ -133,16 +133,20 @@ class DES_EI(AnalyticAcquisitionFunction):
         self.to(device=X.device)  # ensures buffers / parameters are on the same device
       
         #TODO Implement code to account for unknown dimensions.
-        N = X[...,-1] #Assumes n input is the extra dimension
+        N = X[...,-1] # Assumes n input is the extra dimension
         X_in = X[...,:-1]
-        #Calculate Posterior of noise model for variance predictions
+
+        # To keep botorch-compatible t-batch dimensions (k,1,1,1), push a singleton q dim
+        X_eval = X_in.unsqueeze(-3)
+
+        # Calculate Posterior of noise model for variance predictions
         posterior_eps = self.model_eps_posterior(
-            X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
+            X=X_eval, posterior_transform=self.posterior_transform, observation_noise=False,
         )
-        
-        #Calculate predicted variance \sigma_eps^2
-        sigma_2_eps = posterior_eps.mean.squeeze(-2)
-        sigma_2_eps_var = posterior_eps.variance.clamp_min(1e-12).view(sigma_2_eps.shape)
+
+        # Calculate predicted variance \sigma_eps^2
+        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1)
+        sigma_2_eps_var = posterior_eps.variance.clamp_min(1e-12).view_as(sigma_2_eps)
 
         ##Unstandardise Noise GP preds
         #NOTE Dirty, Evil Code
@@ -152,14 +156,14 @@ class DES_EI(AnalyticAcquisitionFunction):
         else:
             sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform) * self.output_transform.sig_std
         
-        #Calculates posterior for latent function f
+        # Calculates posterior for latent function f
         posterior_f = self.model_f_posterior(
-            X=X_in, posterior_transform=self.posterior_transform, observation_noise= False,
+            X=X_eval, posterior_transform=self.posterior_transform, observation_noise=False,
         )
+
         # Calculate predicted f and \sigma_f^2
-        mean = posterior_f.mean.squeeze(-2)
-     
-        sigma_2_f = posterior_f.variance.clamp_min(1e-12).view(mean.shape)
+        mean = posterior_f.mean.squeeze(-1).squeeze(-1)
+        sigma_2_f = posterior_f.variance.clamp_min(1e-12).view_as(mean)
   
         ##Unstandardise Signal GP preds
         if type(self.output_transform) is dict:
@@ -176,8 +180,8 @@ class DES_EI(AnalyticAcquisitionFunction):
      
         ##Calculate query cost
         query_cost = self.cost_model(N.flatten())
-        out = (sigma_2_f.sqrt() * _ei_helper(u) * penalty).squeeze(-1)* query_cost
-        
+        out = (sigma_2_f.sqrt() * _ei_helper(u) * penalty).squeeze(-1) * query_cost
+
         return out
 
 class AEI_fq(AnalyticAcquisitionFunction):
@@ -358,23 +362,31 @@ class BODES_IG(MaxValueBase):
             posterior_transform=self.posterior_transform,
 
         )
-
         #Calculate predicted variance \sigma_eps^2
-        #sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1) # make [k,1]
-
-        #NOTE Lost a squeeze.Temporary fix. VIHGP looses a dimension for some reason
-        sigma_2_eps = posterior_eps.mean.squeeze(-1) # make [k,1]
-        sigma_2_eps_var = posterior_eps.variance.clamp_min(CLAMP_LB).view_as(sigma_2_eps)
-
-        ##Transform predicted variance
-        if type(self.output_transform) is dict:
-            sigma_2_eps,sigma_2_eps_var = _transform_GP(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps'])
-            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform['eps']) * self.output_transform['f'].sig_std
-        else:
-            sigma_2_eps = _inverse_log_transform(sigma_2_eps,sigma_2_eps_var,self.output_transform) * self.output_transform.sig_std
         
-        #Calculate predicted mean
-        mean_f = posterior_f.mean.view_as(sigma_2_eps)
+        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1)  # make [k,1]
+        sigma_2_eps_var = posterior_eps.variance.clamp_min(CLAMP_LB).view_as(sigma_2_eps)
+        
+        ## Transform predicted variance
+        if type(self.output_transform) is dict:
+            
+            sigma_2_eps, sigma_2_eps_var = _transform_GP(
+                sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+            )
+            sigma_2_eps = (
+                _inverse_log_transform(
+                    sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+                )
+                * self.output_transform['f'].sig_std
+            )
+        else:
+            sigma_2_eps = (
+                _inverse_log_transform(sigma_2_eps, sigma_2_eps_var, self.output_transform)
+                * self.output_transform.sig_std
+            )
+
+        # Calculate predicted mean
+        mean_f = posterior_f.mean.squeeze(-1).squeeze(-1)
         sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
         
         ##transform predicted mean
@@ -386,7 +398,6 @@ class BODES_IG(MaxValueBase):
         
         sigma_f = sigma_2_f.sqrt()
 
-        #TODO Transform values correctly
         
         # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
         
@@ -427,9 +438,7 @@ class BODES_IG(MaxValueBase):
         acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
         # average over posterior max samples
         costs = self.cost_model(N.squeeze(-1))
-        # print(f'the costs are {costs}')
-        # print(f'The final acq value is {acq}')
-        acq = acq.mean(dim=1)*costs
+        acq = acq.mean(dim=1) * costs
         
         #Average over fantasies
         # acq = acq.mean(dim=0)
