@@ -213,7 +213,11 @@ class Target_Function:
             sigma2_out = y_evals.var(0).unsqueeze(-1)
             return test_x, y_out,sigma2_out
         else:
-            return test_x_expand, y_evals,torch.zeros_like(y_evals)
+            #Flatten Out to x: [k*n,d], y: [k*n,1] and s2: [k*n,1] of zeros
+            
+            x_out = test_x_expand.flatten().unsqueeze(-1)#TODO Must be modified for more dimensions
+            y_out = y_evals.flatten().unsqueeze(-1)
+            return x_out, y_out,torch.zeros_like(y_out)
     
     def eval_target_true(self,test_x):
 
