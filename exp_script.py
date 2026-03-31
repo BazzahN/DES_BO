@@ -27,7 +27,7 @@ def main():
     gen_args = config["problem"]
     plot_args = config["plots"]
     exp_models = config["models"]
-
+    GP_arg = config["GP"]
     #Step 1: Import Arguments
     #Experimental Parameters
     T = study_args['T'] #Number of iterations
@@ -99,7 +99,8 @@ def main():
         exp_object = EXPERIMENTS[model]
         experiment = exp_object(n=n,
                                 cost_function=lin_cost_func,
-                                bounds=bounds)
+                                bounds=bounds,
+                                GP=GP_arg)
         run_experiment = experiment_handler(target,experiment)
         ##Run experiment
         

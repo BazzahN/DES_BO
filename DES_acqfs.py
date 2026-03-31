@@ -415,7 +415,8 @@ class BODES_IG(MaxValueBase):
         else:
             mvs,_ = _transform_GP(mvs,mvs,self.output_transform)
         
-        
+        # print("mvs shap is",mvs.shape)
+        # print("mean_f shap is",mean_f.shape)
   
         # 1 x s_M
         normalized_mvs = (mvs - mean_f) / sigma_f

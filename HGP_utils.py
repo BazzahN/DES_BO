@@ -290,8 +290,11 @@ class HeteroscedasticBOModel(GPyTorchModel):
             """
 
             X_ndim = X.ndim
-            if self.num_outputs > 1 and X_ndim > 2:
-                X = X.unsqueeze(-3).repeat(*[1] * (X_ndim - 2), self.num_outputs, 1, 1)
+            # if self.num_outputs > 1 and X_ndim > 2:
+            #     X = X.unsqueeze(-3).repeat(*[1] * (X_ndim - 2), self.num_outputs, 1, 1)
+
+            if X_ndim > 2:
+                X = X.unsqueeze(-3).repeat(*[1] * (X_ndim - 2), 2, 1, 1)
             dist = self.model(X)
 
             #NOTE Should I ever need to use the observational distribution I will have to change
@@ -303,7 +306,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
             if latent_model:
                 idx = 0 #Latent function index.
                 # Use batch-dimension indexing (not event-dimension) to preserve q/batch dims.
-                dist = dist[idx]
+                dist = dist[...,idx]
             posterior = GPyTorchPosterior(distribution=dist)
             #NOTE Outcome and posterior transform is not and should not be used for my code.
             # All transformation is doen in the botorch code
@@ -334,9 +337,10 @@ class HeteroscedasticBOModel(GPyTorchModel):
             # check for the multi-batch case for multi-outputs b/c this will throw
             # warnings
 
+        
             X_ndim = X.ndim
-            if self.num_outputs > 1 and X_ndim > 2:
-                X = X.unsqueeze(-3).repeat(*[1] * (X_ndim - 2), self.num_outputs, 1, 1)
+            if X_ndim > 2:
+                X = X.unsqueeze(-3).repeat(*[1] * (X_ndim - 2), 2, 1, 1)
             dist = self.model(X)
 
             #NOTE Should I ever need to use the observational distribution I will have to change
@@ -349,7 +353,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
             #TODO Added to pass to max value estimation function
             idx = 1 #noise function index.
             # Use batch-dimension indexing (not event-dimension) to preserve q/batch dims.
-            dist = dist[idx]
+            dist = dist[...,idx]
 
             posterior = GPyTorchPosterior(distribution=dist)
             

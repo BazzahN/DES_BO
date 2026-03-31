@@ -90,8 +90,9 @@ def noise_function_1(x,phi=0,tau=1):
     c lets us change the width of the noise bump. Previously this was c=0.4, but c=0.1 makes more sense
     for the original test function. 
     '''
+    floor = 0.3
     c = 0.1
-    return (0.3 + tau*torch.exp(-0.5*(x/c)**2))**2
+    return (floor + tau*torch.exp(-0.5*(x/c)**2))**2
 
 def noise_function_2(x,phi=0,tau=1):
     '''

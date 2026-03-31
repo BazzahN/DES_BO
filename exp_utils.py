@@ -483,6 +483,7 @@ class run_IG_exp_itr:
                  bounds,
                  num_mv_samples = 10,
                  set_size = 10,
+                 GP= "sk"
                  ):
 
         r"""Single iteration of BODES
@@ -505,7 +506,11 @@ class run_IG_exp_itr:
         self.discrete_space = torch.linspace(bounds[0,0],bounds[1,0],set_size).unsqueeze(1)
         self.num_mv_samples = num_mv_samples
         self.cost_function = cost_function
-    
+        
+        if GP == "sk":
+            self.moments = 1
+        else:
+            self.moments = 0
     def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform):
         
         #Initialise AF for candidate selection
@@ -522,10 +527,13 @@ class run_IG_exp_itr:
         # The selected n point is rounded to the nearest integer
         xn_new[0,1] = xn_new[0,1].round(decimals=0)
         ## Update Dataset
-        new_x = xn_new[0,0].reshape(1,1)
-        new_n = xn_new[0,1].reshape(1,1)
-        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,new_n)
-        
+        new_x = xn_new[0,0].unsqueeze(-1).unsqueeze(-1)
+        new_n = xn_new[0,1].unsqueeze(-1).unsqueeze(-1)
+        #.reshape(1,1)
+        new_x,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+                                                                    new_n,
+                                                                    self.moments)
+
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,new_n])
         train_y = torch.cat([train_y,new_y])
@@ -555,15 +563,20 @@ def get_best_f_SEI(model,bounds,maximise=MAXIMIZE,output_transform=None):
     :param maximise: Description
     :param output_transform: Description
     """
+
+    #Shows only latent posterior and latent output_transform if dealing with sk
+    if type(output_transform) is dict:
+            model = model['f']
+            output_transform = output_transform['f']
+ 
     #Posterior MEaximise
-    acq_strat_SEI = PosteriorMean(model['f'],maximize=maximise) 
+    acq_strat_SEI = PosteriorMean(model,maximize=maximise) 
     x_best,f_best = f_best_acq(acq_strat_SEI,bounds=bounds[:,0].view(-1,1)) #f* as posteriormin
 
-    #TODO transform output here
     f_best = f_best.reshape(1,1)
     if output_transform is not None:
 
-        return x_best,output_transform['f'].unstandardise(f_best)
+        return x_best,output_transform.unstandardise(f_best)
     else:
         return x_best,f_best
     
@@ -574,8 +587,11 @@ class experiment_handler:
                  target,
                  BO_handler):
         
+        #NOTE: Could probably handle with class inheritence
         self.bounds = BO_handler.bounds
         self.BO_handler = BO_handler.run_iter
+        self.model_call = BO_handler.model_call_func
+
         self.target = target
     
     
@@ -592,7 +608,7 @@ class experiment_handler:
         #Obtain model and initial evaluations
 
         #NOTE: Modify experiment handler to allow for model selection 
-        sk_model, output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
+        sk_model, output_handle = self.model_call(train_x,train_n,train_y,train_sigma2)
         
         #Best f_acqf
         x_strs, f_strs = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
@@ -612,10 +628,11 @@ class experiment_handler:
                                                                                             output_handle)   
             #Best f_acqf
             x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
-          
+            print(x_best,f_best_SEI)
             #Append best evals to the list
             x_strs = torch.cat([x_strs,x_best])
             f_strs = torch.cat([f_strs,f_best_SEI])
+           
             
         return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
     
