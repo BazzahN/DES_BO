@@ -92,35 +92,100 @@ model_call = VI_HGP.get_VI_HGP_model
 hgp_model, out_transform = model_call(train_x.flatten().unsqueeze(-1),train_n,train_y.flatten().unsqueeze(-1),train_sigma2)
 
 
+"""
+Debugging: The costs are correct shape
+"""
+
 from DES_acqfs import BODES_IG
-# IG_exp = run_IG_exp_itr(n=1,
-#                         AF=BODES_IG,
-#                         model_call_func=model_call,
-#                         cost_function=lin_cost_func,
-#                         bounds=bounds,)
+IG_exp = run_IG_exp_itr(n=1,
+                        AF=BODES_IG,
+                        model_call_func=model_call,
+                        cost_function=lin_cost_func,
+                        bounds=bounds,
+                        GP='vihgp')
 
 
+IG_exp_sk = run_IG_exp_itr(n=1,
+                        AF=BODES_IG,
+                        model_call_func=get_stoch_kriging_model,
+                        cost_function=lin_cost_func,
+                        bounds=bounds,
+                        GP='sk')
 
-# # init_x = torch.linspace(0,1,500).reshape((500,1,1)).unsqueeze(-3)
-# hgp_model,train_x,train_n,train_y,train_sigma2,out_transform = IG_exp.run_iter(hgp_model,
-#                                                                               train_x,
+# init_x = torch.linspace(0,1,500).reshape((500,1,1)).unsqueeze(-3)
+hgp_model,train_x_v,train_n_v,train_y_v,train_sigma2_v,out_transform_v = IG_exp.run_iter(hgp_model,
+                                                                              train_x.flatten().unsqueeze(-1),
+                                                                              train_n,
+                                                                              train_y.flatten().unsqueeze(-1),
+                                                                              train_sigma2,
+                                                                              target,
+                                                                              out_transform)
+
+# sk_model,sk_transform = get_stoch_kriging_model(train_x.mean(dim=0),train_n,train_y.mean(dim=0),train_y.var(dim=0))
+# sk_model,train_x_s,train_n_s,train_y_s,train_sigma2_s,out_transform_s = IG_exp_sk.run_iter(sk_model,
+#                                                                               train_x.mean(dim=0),
 #                                                                               train_n,
-#                                                                               train_y,
-#                                                                               train_sigma2,
+#                                                                               train_y.mean(dim=0),
+#                                                                               train_y.var(dim=0),
 #                                                                               target,
-#                                                                               out_transform)
+#                                                                               sk_transform)
+# train_x = data_in['train_x'][m]
+# train_n = data_in['train_n'][m]
+# train_y = data_in['train_y'][m]
+# train_sigma2 = data_in['train_sigma2'][m]
+# train_rngs = data_in['rngs'][m] 
 
-
-model,sk_transform = get_stoch_kriging_model(train_x.mean(dim=0),train_n,train_y.mean(dim=0),train_y.var(dim=0))
 
 init_x = torch.linspace(0,1,500).reshape((500,1))
-out_sk = model['f'].posterior(init_x)
+# out_sk = sk_model['f'].posterior(init_x)
+# sk_mean = sk_transform['f'].unstandardise(out_sk.mean)
 
-sk_mean = sk_transform['f'].unstandardise(out_sk.mean)
+true_y,true_eps = target.eval_target_true(init_x)
+ 
 out_hgp = hgp_model.posterior(init_x)
 hgp_mean = out_hgp.mean
+from DES_acqfs import _inverse_log_transform
+
+hgp_2_out = hgp_model.noise_posterior(init_x)
+sigma_2_eps = (
+                _inverse_log_transform(hgp_2_out.mean, hgp_2_out.variance, out_transform_v)
+                * out_transform_v.sig_std
+            )
 
 import matplotlib.pyplot as plt
 
-plt.plot(sk_mean.detach())
-plt.plot(hgp_mean.detach())
+# plt.plot(sk_mean.detach())
+plt.plot(init_x,true_y)
+plt.plot(init_x,hgp_mean.detach())
+plt.plot(train_x.flatten(),train_y.flatten(),'x')
+
+plt.plot(init_x,true_eps)
+plt.plot(init_x,sigma_2_eps.detach())
+# plt.plot(train_x.flatten(),train_y.flatten(),'x')
+from exp_utils import experiment_handler
+
+exp_hold = experiment_handler(target,IG_exp)
+master = torch.Generator().manual_seed(12345)
+
+train_x,train_n,train_y,train_sigma2,x_strs,f_strs = exp_hold.run_T_BO_iters(5,
+                                                                            train_x.flatten().unsqueeze(-1),
+                                                                            train_n,
+                                                                            train_y.flatten().unsqueeze(-1),
+                                                                            train_sigma2,
+                                                                            master.get_state()
+                                                                            )
+
+# exp_hold = experiment_handler(target,IG_exp_sk)
+# master = torch.Generator().manual_seed(12345)
+
+# exp_hold.run_T_BO_iters(5,
+#                         train_x.mean(dim=0),
+#                         train_n,
+#                         train_y.mean(dim=0),
+#                         train_y.var(dim=0),
+#                         master.get_state()
+#                         )                        #
+
+from exp_utils import get_best_f_SEI
+
+x,f = get_best_f_SEI(hgp_model,bounds=bounds,output_transform=out_transform_v)
