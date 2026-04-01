@@ -87,9 +87,9 @@ bounds = torch.tensor([[x_min,n_min] * 1,
 
 
 #FIt Model to data
-VI_HGP =VI_HGP(n_u=5,iters=800,standardise=False,verbose=True)
+VI_HGP =VI_HGP(n_u=10,iters=800,standardise=True,verbose=True)
 model_call = VI_HGP.get_VI_HGP_model
-hgp_model, out_transform = model_call(train_x.flatten().unsqueeze(-1),train_n,train_y.flatten().unsqueeze(-1),train_sigma2)
+# hgp_model, out_transform = model_call(train_x.flatten().unsqueeze(-1),train_n,train_y.flatten().unsqueeze(-1),train_sigma2)
 
 
 """
@@ -142,10 +142,11 @@ init_x = torch.linspace(0,1,500).reshape((500,1))
 
 true_y,true_eps = target.eval_target_true(init_x)
  
-out_hgp = hgp_model.posterior(init_x)
-hgp_mean = out_hgp.mean
-from DES_acqfs import _inverse_log_transform
 
+
+from DES_acqfs import _inverse_log_transform,_transform_GP
+out_hgp = hgp_model.posterior(init_x)
+hgp_mean,hgp_var = _transform_GP(out_hgp.mean,out_hgp.variance,out_transform_v)
 hgp_2_out = hgp_model.noise_posterior(init_x)
 sigma_2_eps = (
                 _inverse_log_transform(hgp_2_out.mean, hgp_2_out.variance, out_transform_v)
@@ -161,7 +162,6 @@ plt.plot(train_x.flatten(),train_y.flatten(),'x')
 
 plt.plot(init_x,true_eps)
 plt.plot(init_x,sigma_2_eps.detach())
-# plt.plot(train_x.flatten(),train_y.flatten(),'x')
 from exp_utils import experiment_handler
 
 exp_hold = experiment_handler(target,IG_exp)
@@ -186,6 +186,6 @@ train_x,train_n,train_y,train_sigma2,x_strs,f_strs = exp_hold.run_T_BO_iters(5,
 #                         master.get_state()
 #                         )                        #
 
-from exp_utils import get_best_f_SEI
+# from exp_utils import get_best_f_SEI
 
-x,f = get_best_f_SEI(hgp_model,bounds=bounds,output_transform=out_transform_v)
+# x,f = get_best_f_SEI(hgp_model,bounds=bounds,output_transform=out_transform_v)

@@ -9,7 +9,7 @@ tkwargs = {
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
 }
 
-from exp_utils import experiment_handler,EXPERIMENTS
+from exp_utils import experiment_handler,EXPERIMENTS,GP_dial
 import sys
 def main():
 
@@ -100,6 +100,7 @@ def main():
         experiment = exp_object(n=n,
                                 cost_function=lin_cost_func,
                                 bounds=bounds,
+                                model_call_func=GP_dial(GP_arg,misc_args["vihgp"]),
                                 GP=GP_arg)
         run_experiment = experiment_handler(target,experiment)
         ##Run experiment

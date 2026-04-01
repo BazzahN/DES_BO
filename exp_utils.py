@@ -103,9 +103,6 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     y_handler = output_handler()
     sigma2_handler = output_handler()
 
-    print(f"train_x:{train_x}")
-    print(f"train_y: {train_y}")
-    print(f"train_sig2:{sigma2_hat}")
     #Standardise y input
     train_y_std = y_handler.standardise_and_update(train_y)
     sig_scale = 1 / y_handler.sig_std
@@ -360,7 +357,8 @@ class run_vanilla_exp_itr:
                  f_best_strat, #SEI
                  model_call_func, #same with modifications
                  cost_function, #Does nothing
-                 bounds):
+                 bounds,
+                 GP = "sk"):
 
         r"""Single iteration of BODES
             Args:
@@ -381,9 +379,14 @@ class run_vanilla_exp_itr:
         # self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
         self.bounds = bounds
 
+        if GP == "sk":
+            self.moments = 1
+        else:
+            self.moments = 0
+
     def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform): #Here OT does nothing
         
-        f_best = self.f_best_strat(model,self.bounds)
+        f_best = self.f_best_strat(model,self.bounds,)
 
         #Initialise AF for candidate selection
         AF = self.AF(model=model['f'],
@@ -395,7 +398,9 @@ class run_vanilla_exp_itr:
         #Removes number of replication bounds from vanilla
 
         ## Update Dataset (constant n)
-        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,self.n)
+        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+                                                                self.n,
+                                                                self.moments)
 
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,self.n])
@@ -416,7 +421,8 @@ class run_DES_exp_itr:
                  model_call_func,
                 #  target_function,
                  cost_function,
-                 bounds):
+                 bounds,
+                 GP="sk"):
 
         r"""Single iteration of BODES
             Args:
@@ -438,7 +444,10 @@ class run_DES_exp_itr:
         # self.run_sim = target_function.eval_target_noisy #y,sigma2 =func(x,n)
         self.cost_function = cost_function
         self.bounds= bounds
-
+        if GP == "sk":
+            self.moments = 1
+        else:
+            self.moments = 0
 
     def run_iter(self,model,train_x,train_n,train_y,train_sigma2,target_function,output_transform):
         
@@ -459,7 +468,9 @@ class run_DES_exp_itr:
         ## Update Dataset
         new_x = xn_new[0,0].reshape(1,1)
         new_n = xn_new[0,1].reshape(1,1)
-        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,new_n)
+        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+                                                                new_n,
+                                                                self.moments)
 
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,new_n])
@@ -523,7 +534,7 @@ class run_IG_exp_itr:
 
         ## Optimise AF and get candidates
         xn_new, acq_val = candidate_acq(AF,self.bounds)
-        print(f"ACQF VAL:{acq_val.item()}")
+        print(f"[OUT]ACQF VAL:{acq_val.item()}")
         # The selected n point is rounded to the nearest integer
         xn_new[0,1] = xn_new[0,1].round(decimals=0)
         ## Update Dataset
@@ -550,7 +561,6 @@ def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
 
     acq_strat_AEI = AEI_fq(model['f'],output_transform,maximize=maximise)
     _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
-    print(f"f_best={f_best}\n")
     return f_best
 
 #TODO: Modify for generality to allow HGP interface
@@ -565,16 +575,17 @@ def get_best_f_SEI(model,bounds,maximise=MAXIMIZE,output_transform=None):
     """
 
     #Shows only latent posterior and latent output_transform if dealing with sk
-    if type(output_transform) is dict:
+    if type(model) is dict:
             model = model['f']
-            output_transform = output_transform['f']
- 
+            
     #Posterior MEaximise
     acq_strat_SEI = PosteriorMean(model,maximize=maximise) 
     x_best,f_best = f_best_acq(acq_strat_SEI,bounds=bounds[:,0].view(-1,1)) #f* as posteriormin
 
     f_best = f_best.reshape(1,1)
     if output_transform is not None:
+        if type(output_transform) is dict:
+            output_transform = output_transform['f']
 
         return x_best,output_transform.unstandardise(f_best)
     else:
@@ -591,7 +602,7 @@ class experiment_handler:
         self.bounds = BO_handler.bounds
         self.BO_handler = BO_handler.run_iter
         self.model_call = BO_handler.model_call_func
-
+        self.moments = BO_handler.moments
         self.target = target
     
     
@@ -628,7 +639,9 @@ class experiment_handler:
                                                                                             output_handle)   
             #Best f_acqf
             x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
-            print(x_best,f_best_SEI)
+            print(f"[OUT] x optim: {x_best.item()}")
+            print(f"[OUT] f optim: {f_best_SEI.item()}")
+
             #Append best evals to the list
             x_strs = torch.cat([x_strs,x_best])
             f_strs = torch.cat([f_strs,f_best_SEI])
@@ -663,6 +676,7 @@ class experiment_handler:
                                                                                   rngs[m])
 
             #Append all data to lists
+           
             xs.append(out_x)
             ns.append(out_n)
             ys.append(out_y)
@@ -670,10 +684,17 @@ class experiment_handler:
             x_strs.append(x_str)
             f_strs.append(f_str)
         
-        xs = torch.stack(xs)
+
+        if not self.moments:
+            xs = torch.cat(xs)
+            ys = torch.cat(ys)
+            sigma2s = torch.cat(sigma2s)
+        else:
+            xs = torch.stack(xs)
+            ys = torch.stack(ys)
+            sigma2s = torch.stack(sigma2s)
         ns = torch.stack(ns)
-        ys = torch.stack(ys)
-        sigma2s = torch.stack(sigma2s)
+        
         x_strs = torch.stack(x_strs)
         f_strs = torch.stack(f_strs)
 
@@ -687,16 +708,38 @@ from functools import partial
 VANILLA = partial(run_vanilla_exp_itr,
                   AF=ExpectedImprovement,
                   f_best_strat=get_best_f_SEI,
-                  model_call_func=get_stoch_kriging_model)
+                  #model_call_func=get_stoch_kriging_model
+                  )
 
 AEI = partial(run_DES_exp_itr,
                 AF=DES_EI,
                 f_best_strat=get_best_f_AEI,
-                model_call_func=get_stoch_kriging_model)
+                #model_call_func=get_stoch_kriging_model
+                )
 
 IG = partial(run_IG_exp_itr,
             AF=BODES_IG,
-            model_call_func=get_stoch_kriging_model)
+            #model_call_func=get_stoch_kriging_model
+            )
+
+
+
+def GP_dial(gp_name,add_args):
+
+    """
+    Returns the stoch kriging model if gp_name is sk
+    and the variational inference hp if vihgp is called.
+    """
+    
+    if gp_name == "vihgp":
+
+        vi_hgp = VI_HGP(n_u=add_args['n_u'],
+                        iters = add_args['iters'],
+                        standardise=True,
+                        verbose=True)
+        return vi_hgp.get_VI_HGP_model
+    else:
+        return get_stoch_kriging_model
 
 
 EXPERIMENTS = {'vanilla':VANILLA,
