@@ -38,8 +38,10 @@ def test_function_1(x):
 
 def test_function_2(x):
     '''
-    Simple optimisation problem for DES_BO:
-        f(x) = sin(5x) + cos(7x)
+    More complicated optimisation problem for DES_BO:
+        f(x) = sin(x) + sin(x*10/3)
+    domain is x \in [-2,6] but as we work in 0-1 this is automatically
+    transformed within function
 
     Inputs
     ------
@@ -50,8 +52,13 @@ def test_function_2(x):
     f: Float
         Evaluation of the test function
     '''
+    #Transform from [0,1] -> [-2,6]
+    a= -2
+    b = 6
 
-    return -(torch.sin(5*x) + torch.cos(7*x)) 
+    x_in = a + x*(b-a)
+
+    return torch.sin(x_in) + torch.cos(x_in*10/3) 
 
 # def test_function_2(x):
 #     '''
@@ -66,7 +73,7 @@ def noise_function_1(x,phi=0,tau=1):
     '''
     Plots the underlying heteroscedastic noise surface for the test problem,
     defined as:
-    \sigma_eps^2(x) = (0.1 + tau*exp(-0.5*((x - \phi)/0.4)**2))**2
+    \sigma_eps^2(x) = (0.3 + tau*exp(-0.5*((x - \phi)/0.4)**2))**2
     
     Describes noise as a sinlge peak centred at phi with a constant
     background noise of 0.1 everywhere else. 

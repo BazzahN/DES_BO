@@ -108,6 +108,7 @@ def main():
     torch.save(test_sigma2,outdir / f"test_sigma2.pt")
 
     #Obtain max value
+    #TODO Change this so it gives the maximiser instead
     try:
         res = config['optim']
     except:

@@ -220,7 +220,8 @@ class AEI_fq(AnalyticAcquisitionFunction):
                 consequence `optimize_acqf(PosteriorMean(gp, maximize=False))`
                 actually returns -1 * minimum of the posterior mean.
         """
-        super().__init__(model=model, posterior_transform=posterior_transform)
+        model_f, _, _ = _model_type(model)
+        super().__init__(model=model_f, posterior_transform=posterior_transform)
         self.maximize = maximize
         self.output_transform = output_transform
 

@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
-from DES_acqfs import DES_EI, AEI_fq,BODES_IG
+from DES_acqfs import DES_EI, AEI_fq,BODES_IG,_model_type
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -389,7 +389,8 @@ class run_vanilla_exp_itr:
         f_best = self.f_best_strat(model,self.bounds,)
 
         #Initialise AF for candidate selection
-        AF = self.AF(model=model['f'],
+        model_f,_,_ = _model_type(model)
+        AF = self.AF(model=model_f,
                      best_f=f_best[0], #TODO: curry this acqf so that cost_model and maximise are implemented beforehand
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
@@ -558,8 +559,11 @@ class run_IG_exp_itr:
 
 
 def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
-
-    acq_strat_AEI = AEI_fq(model['f'],output_transform,maximize=maximise)
+    
+    if type(model) is dict:
+            model = model['f']
+            
+    acq_strat_AEI = AEI_fq(model,output_transform,maximize=maximise)
     _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
     return f_best
 
