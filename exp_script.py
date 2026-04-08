@@ -37,6 +37,7 @@ def main():
     # Problem Constants
     k= gen_args["k"] #Number of points
     n= gen_args["n"] #Replications at each point
+    n_v = gen_args["n_v"] #Number of replications for vanilla
 
     x_min = gen_args["x_min"] 
     x_max = gen_args["x_max"] #Domain bounds
@@ -97,7 +98,7 @@ def main():
         ##Initalise experiment handling class
         print(f'Starting Experiment: {model}....\n')
         exp_object = EXPERIMENTS[model]
-        experiment = exp_object(n=n,
+        experiment = exp_object(n=n_v, #Assigns number of replications for vanilla. If not vanilla then dummy used
                                 cost_function=lin_cost_func,
                                 bounds=bounds,
                                 model_call_func=GP_dial(GP_arg,misc_args["vihgp"]),
