@@ -325,6 +325,6 @@ or remove any.
 '''
 
 TEST_FUNCTION_NAMES = ["f(x) = \\sin(5x) + \\cos(7x)",
-                       "f(x) = -(\\sin(5x) + \\cos(7x))"]
+                       "f(x) = \\sin(x) + \\cos(\\frac{10}{3}x)"]
 NOISE_FUNCTION_NAMES =["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
                         "\\sigma^2_{\\varepsilon}(x) = \\tau^2"]
