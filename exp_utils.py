@@ -123,7 +123,6 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     ##Standardise sigma2 hat
 
     #Log sigma2 to ensure nonnegative values
-    print(f"sigma2: {sigma2_hat}")
     sigma2_hat_log = sigma2_hat.log()
 
     sigma2_hat_std = sigma2_handler.standardise_and_update(sigma2_hat_log)
@@ -561,8 +560,9 @@ class run_IG_exp_itr:
 
 def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
     
-    if type(model) is dict:
-            model = model['f']
+    #NOTE I think this model selection is handled in AE_fq
+    # if type(model) is dict:
+    #         model = model['f']
             
     acq_strat_AEI = AEI_fq(model,output_transform,maximize=maximise)
     _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
