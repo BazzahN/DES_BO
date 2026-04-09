@@ -93,6 +93,7 @@ def main():
     names_out = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
     outdir = Path(exp_name + "/Data")
     outdir.mkdir(parents=True,exist_ok=True)
+    #TODO create the other outdirs for predictions if predictions argument is true
 
     for model in exp_models: 
         ##Initalise experiment handling class

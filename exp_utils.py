@@ -395,11 +395,11 @@ class run_vanilla_exp_itr:
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
         ## Optimise AF and get candidates
-        new_x, _ = candidate_acq(AF,self.bounds[:,0].view(-1,1))
+        new_x, acq_val = candidate_acq(AF,self.bounds[:,0].view(-1,1))
         #Removes number of replication bounds from vanilla
-
+        print(f"[OUT]ACQF VAL:{acq_val.item()}")
         ## Update Dataset (constant n)
-        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+        new_x,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
                                                                 self.n,
                                                                 self.moments)
 
@@ -462,17 +462,18 @@ class run_DES_exp_itr:
                      maximize=MAXIMIZE) #Define Cost aware and penalised EI
 
         ## Optimise AF and get candidates
-        xn_new, _ = candidate_acq(AF,self.bounds)
-
+        xn_new, acq_val = candidate_acq(AF,self.bounds)
+        print(f"[OUT]ACQF VAL:{acq_val.item()}")
         # The selected n point is rounded to the nearest integer
         xn_new[0,1] = xn_new[0,1].round(decimals=0)
+     
         ## Update Dataset
-        new_x = xn_new[0,0].reshape(1,1)
-        new_n = xn_new[0,1].reshape(1,1)
-        _,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
-                                                                new_n,
-                                                                self.moments)
-
+        new_x = xn_new[0,0].unsqueeze(-1).unsqueeze(-1)
+        new_n = xn_new[0,1].unsqueeze(-1).unsqueeze(-1)
+        #.reshape(1,1)
+        new_x,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+                                                                    new_n,
+                                                                    self.moments)
         train_x = torch.cat([train_x,new_x])
         train_n = torch.cat([train_n,new_n])
         train_y = torch.cat([train_y,new_y])
