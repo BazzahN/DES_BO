@@ -136,12 +136,14 @@ def get_stoch_kriging_model(train_x,train_n,train_y,sigma2_hat):
     mll = ExactMarginalLogLikelihood(gp_noise.likelihood,gp_noise)
     fit_gpytorch_mll(mll)
 
+    #TODO: Insert hyperparamater getter here
+    hyperparamaters = None
     #Puts model into dictionary
     model = {'f':gp,'eps':gp_noise}
 
     #Puts transformers into dictionary
     out_transform = {'f':y_handler,'eps':sigma2_handler}
-    return model, out_transform
+    return model, out_transform, hyperparamaters
 
 from HGP_utils import HeteroscedasticBOModel,HeteroscedasticELBO,fit_vihgp_elbo
 
@@ -208,8 +210,11 @@ class VI_HGP():
                                      verbose=self.verbose)
 
 
+        #TODO: Insert hyperparamater getter here
+        hyperparamaters = None
+
         #NOTE: In contrast, to get stoch_kriging this just outputs a single class for the model and transformer
-        return hgp_model, out_transform
+        return hgp_model, out_transform, hyperparamaters
 
 
 def get_k_inital_evals(k,n,target_function):
@@ -325,27 +330,27 @@ from DES_acqfs import AEI_fq
 from botorch.acquisition import PosteriorMean,ExpectedImprovement
 
 
+#NOTE: Pretty sure this is depricated - remove once confirmed
+# class BODES_loop_initialiser:
 
-class BODES_loop_initialiser:
-
-    def __init__(self,
-                 k,
-                 n,
-                 target_function_class):
+#     def __init__(self,
+#                  k,
+#                  n,
+#                  target_function_class):
         
-        self.k = k
-        self.n = n
-        self.target_function_class = target_function_class
+#         self.k = k
+#         self.n = n
+#         self.target_function_class = target_function_class
 
-    def initialise(self):
+#     def initialise(self):
 
-        train_x,train_n,train_y,train_sigma2 = get_k_inital_evals(self.k,
-                                                                  self.n,
-                                                                  self.target_function_class)
+#         train_x,train_n,train_y,train_sigma2 = get_k_inital_evals(self.k,
+#                                                                   self.n,
+#                                                                   self.target_function_class)
 
-        model,output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
+#         model,output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
 
-        return model,train_x,train_n,train_y,train_sigma2,output_handle
+#         return model,train_x,train_n,train_y,train_sigma2,output_handle
 
 #TODO: Note too self. In future use an abstract baseclass when using the same model three times
 class run_vanilla_exp_itr:
@@ -408,9 +413,9 @@ class run_vanilla_exp_itr:
         train_sigma2 = torch.cat([train_sigma2,new_sigma2])
 
         ## Re-condtion model
-        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+        model,output_handle,hyperparamaters = self.model_call_func(train_x,train_n,train_y,train_sigma2)
 
-        return model, train_x, train_n, train_y, train_sigma2,output_handle
+        return model,AF, train_x, train_n, train_y, train_sigma2,output_handle,hyperparamaters
 
 class run_DES_exp_itr:
 
@@ -479,11 +484,11 @@ class run_DES_exp_itr:
         train_sigma2 = torch.cat([train_sigma2,new_sigma2])
 
         ## Re-condtion model
-        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+        model,output_handle,hyperparamaters = self.model_call_func(train_x,train_n,train_y,train_sigma2)
 
 
 
-        return model, train_x, train_n, train_y, train_sigma2,output_handle
+        return model,AF, train_x, train_n, train_y, train_sigma2,output_handle,hyperparamaters
 
 class run_IG_exp_itr:
 
@@ -552,9 +557,9 @@ class run_IG_exp_itr:
         train_sigma2 = torch.cat([train_sigma2,new_sigma2])
 
         ## Re-condtion model
-        model,output_handle = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+        model,output_handle,hyperparamaters = self.model_call_func(train_x,train_n,train_y,train_sigma2)
 
-        return model, train_x, train_n, train_y, train_sigma2,output_handle
+        return model,AF, train_x, train_n, train_y, train_sigma2,output_handle, hyperparamaters
 
 
 
@@ -601,16 +606,22 @@ class experiment_handler:
 
     def __init__(self, 
                  target,
-                 BO_handler):
+                 BO_handler,
+                 troubleshoot,):
         
         #NOTE: Could probably handle with class inheritence
+        # Assign BO relevant args
         self.bounds = BO_handler.bounds
         self.BO_handler = BO_handler.run_iter
         self.model_call = BO_handler.model_call_func
         self.moments = BO_handler.moments
+        
+        # Assign Target function
         self.target = target
+        # If true, outputs prediction, AFs and hyperparamater plots
+        self.troubleshoot = troubleshoot
     
-    
+    #TODO Import method to run at an indexed macroreplication
     def run_T_BO_iters(self,T,
                             train_x,
                             train_n,
@@ -621,29 +632,42 @@ class experiment_handler:
         #Set Experiment seed
         rng_state = rng_state.byte()
         self.target.update_rng_state(rng_state)
+        
         #Obtain model and initial evaluations
-
-        #NOTE: Modify experiment handler to allow for model selection 
-        sk_model, output_handle = self.model_call(train_x,train_n,train_y,train_sigma2)
+        model, output_handle,hyperparamaters = self.model_call(train_x,train_n,train_y,train_sigma2)
+        
+        if self.troubleshoot:
+                #TODO Insert prediction plotter here
+                #TODO Insert AF printer here
+                #TODO Insert hyperparamater exporter here
+                print("coming soon")
         
         #Best f_acqf
-        x_strs, f_strs = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
+        x_strs, f_strs = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
 
   
         for t in range(0,T):
             print(f'Starting iter {t} of {T}....\n',flush=True)
             #sys.stdout.write(f'Starting iter {t} of {T}....\n')
             #sys.stdout.flush()
-            #Iteration Funciton
-            sk_model,train_x,train_n,train_y,train_sigma2,output_handle = self.BO_handler(sk_model,
+
+            #Runs single iteration of BO
+            model,AF,train_x,train_n,train_y,train_sigma2,output_handle = self.BO_handler(model,
                                                                                             train_x,
                                                                                             train_n,
                                                                                             train_y,
                                                                                             train_sigma2,
                                                                                             self.target,
                                                                                             output_handle)   
+            
+            if self.troubleshoot:
+                #TODO Insert prediction plotter here
+                #TODO Insert AF printer here
+                #TODO Insert hyperparam exporter here 
+                print("coming soon")
+            
             #Best f_acqf
-            x_best, f_best_SEI = get_best_f_SEI(sk_model,bounds=self.bounds,output_transform=output_handle)
+            x_best, f_best_SEI = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
             print(f"[OUT] x optim: {x_best.item()}")
             print(f"[OUT] f optim: {f_best_SEI.item()}")
 
@@ -713,18 +737,15 @@ from functools import partial
 VANILLA = partial(run_vanilla_exp_itr,
                   AF=ExpectedImprovement,
                   f_best_strat=get_best_f_SEI,
-                  #model_call_func=get_stoch_kriging_model
                   )
 
 AEI = partial(run_DES_exp_itr,
                 AF=DES_EI,
                 f_best_strat=get_best_f_AEI,
-                #model_call_func=get_stoch_kriging_model
                 )
 
 IG = partial(run_IG_exp_itr,
             AF=BODES_IG,
-            #model_call_func=get_stoch_kriging_model
             )
 
 
