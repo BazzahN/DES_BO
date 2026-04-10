@@ -1,5 +1,7 @@
 import torch as st
 import matplotlib.pyplot as plt
+#TODO Import tkwargs from exp_utils
+
 #TODO UTILS
 
 def get_files(dir_name,file_names,add=""):
@@ -11,6 +13,60 @@ def get_files(dir_name,file_names,add=""):
 	return data
 
 #TODO HYPERPARAMATER HANDLING FUNCTIONS
+
+#NOTE: Use for get_hyperparamaters function
+def get_model_hypers(model):
+
+    def convert_to_correlation(m):
+
+        inv = torch.inverse(torch.diag(torch.diag(m)).sqrt())
+
+        r = inv@m@inv
+        return r
+
+
+    #Get covar matrix
+
+    covar_mat = model.task_covar_module._eval_covar_matrix()
+    
+    corr_mat = convert_to_correlation(covar_mat)
+
+    #Extract Means and stdvs used to standardise to N(0,1)    
+
+    std_stdvs = model.outcome_transform.stdvs
+    std_means = model.outcome_transform.means
+    
+
+    #Mean function constant value
+
+    mean_func = model.mean_module.constant.detach()
+
+    #Lengthscale 
+
+    lengthscale = model.covar_module.lengthscale.detach()
+        
+    global_noise = model.likelihood.noise.detach()
+    
+    hyperparams_dict = dict(mean_func = mean_func.numpy(),
+                            l_scale = lengthscale.numpy(),
+                            covar_mat = covar_mat.detach().numpy(),
+                            corr_mat = corr_mat.detach().numpy(),
+                            obsv_noise = global_noise.numpy(),
+                            ot_means = std_means.numpy(),
+                            ot_sds = std_stdvs.numpy())
+    
+    ls = hyperparams_dict['l_scale'].flatten()
+    #TODO: Implement more flexible version, atm this is only suited to 2 dims
+    #Probably have to export correlation matrix sperately, as it is going to get more cumbersome with increasing dimension size. 
+    hyperparams_dict_reduced = dict(mean_func = hyperparams_dict['mean_func'],
+                                    lscl_x1 = ls[0],
+                                    lscl_x2 = ls[1],
+                                    corr_mat_od = hyperparams_dict['corr_mat'][0,1],
+                                    obsv_noise = hyperparams_dict['obsv_noise'].item(),
+                                    ot_means = hyperparams_dict['ot_means'].item(),
+                                    ot_sds = hyperparams_dict['ot_sds'].item())
+
+    return hyperparams_dict_reduced
 def export_hyperparamaters(path,name,hyperparamaters):
     """
     Exports hyperparamaters in x format under the chosen name and saves in the chosen path
@@ -93,11 +149,17 @@ def sausage_plot(train_x,
     
     #Plot Observations
     ax.plot(train_x,train_y, "o", label="Evals", alpha=0.5)
+    #Plot Predicted mean mu_f
     ax.plot(grid_x, pred_f, color="C0", label="Post Mean")
-    
     # Plot Truth <- green
     ax.plot(grid_x,true_f,color='g',label='Truth')
 
+    #Plot candidates if given
+    if candidates is not None:
+        new_x, new_y = candidates
+        ax.plot(new_x,new_y,'r*',label="Candidates")
+
+    #Plot +/- epistemic uncretainty sigma
     ax.fill_between(
             grid_x,
             (pred_f - 2 * st.sqrt(pred_sigma2_f)),
@@ -106,6 +168,7 @@ def sausage_plot(train_x,
             alpha=0.15,
             label="±2 std $\sigma_{f}$",
     )
+    #Plot +/- 2* predicted noise sigma
     ax.fill_between(
             grid_x,
             pred_f - 2 * st.sqrt(pred_sigma2_eps),
@@ -114,6 +177,7 @@ def sausage_plot(train_x,
             alpha=0.15,
             label="±2 std $\sigma_{\epsilon}$",
     )
+    #Plot +/- 2* true noise sigma2
     ax.fill_between(
             grid_x,
             true_f - 2 * st.sqrt(true_sigma2),
@@ -122,12 +186,14 @@ def sausage_plot(train_x,
             alpha=0.15,
             label="±2 std (truth)",
     )
+
+    #Axis labels and legends
     ax.set_xlabel("$x$")
     ax.set_ylabel("$y$")
-
     ax.set_title(plot_title)
-    
     ax.legend(loc="lower left",ncol=3)
+
+    #TODO Savefig at subdir: preds w/name: acqf_pred_m_t
 
 def input_generator(n_grid,bounds,replications):
     """
@@ -177,7 +243,7 @@ def prediction_plotter(train_x,
     # Generate Predictions
     grid_x,pred_f,pred_sigma2_f,pred_sigma2_eps = predictor(n_grid,model,outcome_transform)
 
-    # TODO: Generate Target
+    # TODO: Import Target from Input subdir
     """
     Comment:
     Just import the target function which is used by experiment handler.
