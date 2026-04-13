@@ -7,7 +7,7 @@ from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.acquisition import ExpectedImprovement
-tkwargs = {
+TKWARGS = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
 }
@@ -221,7 +221,7 @@ def get_k_inital_evals(k,n,target_function):
     '''
     Gets k inital observations for a flat n replications each  
     '''
-    train_x = torch.linspace(0.1,1,k).reshape(k,1).to(**tkwargs)
+    train_x = torch.linspace(0.1,1,k).reshape(k,1).to(**TKWARGS)
     train_n = torch.ones_like(train_x) * n
 
 

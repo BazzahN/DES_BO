@@ -213,6 +213,7 @@ def plot_GP(test_x,
 
     plt.show()        
 
+
 def poster_plot(
     N_points,
     train_x,

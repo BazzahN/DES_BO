@@ -1,14 +1,19 @@
+from pathlib import Path
+from exp_utils import TKWARGS
 import torch as st
 import matplotlib.pyplot as plt
 #TODO Import tkwargs from exp_utils
 
-#TODO UTILS
+DPI = 500
+LOG_FNAME = "/log"
+#TODO Double check if this folder is uppercase
+# #TODO UTILS
 
 def get_files(dir_name,file_names,add=""):
 	data = {}
 	for file_name in file_names:
 
-		load_in = st.load(indir /  f"{add}{file_name}.pt").to(**tkwargs)
+		load_in = st.load(indir /  f"{add}{file_name}.pt").to(**TKWARGS)
 		data[file_name] = load_in
 	return data
 
@@ -19,7 +24,7 @@ def get_model_hypers(model):
 
     def convert_to_correlation(m):
 
-        inv = torch.inverse(torch.diag(torch.diag(m)).sqrt())
+        inv = st.inverse(st.diag(st.diag(m)).sqrt())
 
         r = inv@m@inv
         return r
@@ -67,7 +72,7 @@ def get_model_hypers(model):
                                     ot_sds = hyperparams_dict['ot_sds'].item())
 
     return hyperparams_dict_reduced
-def export_hyperparamaters(path,name,hyperparamaters):
+def export_hyperparamaters(path,acqf_name,hyperparamaters):
     """
     Exports hyperparamaters in x format under the chosen name and saves in the chosen path
 
@@ -122,7 +127,7 @@ def sausage_plot(train_x,
                  pred_sigma2_eps,
                  true_f,
                  true_sigma2,
-                 name,
+                 acqf_name,
                  path,
                  hyperparamaters =None,
                  candidates = None, #dict #TODO: Arrange canddiates 
@@ -194,16 +199,31 @@ def sausage_plot(train_x,
     ax.legend(loc="lower left",ncol=3)
 
     #TODO Savefig at subdir: preds w/name: acqf_pred_m_t
+    outdir = Path(path + LOG_FNAME +"/preds")
+    fname = f"{acqf_name}_pred_{run_params['m']}_{run_params['t']}.png"
+    plt.savefig(outdir / fname, dpi=DPI, bbox_inches="tight")
 
-def input_generator(n_grid,bounds,replications):
+def input_generator(n_grid,bounds=[0,1],replications=None):
     """
     Should be able to also pass input to AF for different selections of n
     """    
 
     #Includes n if replications is not none
+
+    #Generate test points
+    grid_x =  st.linspace(0,1,n_grid).to(**TKWARGS)
+
+    # Generates grid of x and n values if replications given
+    if replications is not None:
+        grid_x = st.stack([
+            grid_x.repeat(len(replications)),          # column 0
+            replications.repeat_interleave(len(grid_x))  # column 1
+        ], dim=1)
+
+    return grid_x
 def _predict_skhgp(grid_x,model,outcome_transform):
 
-    """
+    """b
     
     """
     pred_f = 0
@@ -231,7 +251,7 @@ def prediction_plotter(train_x,
                        n_grid,
                        model,
                        outcome_transform,
-                       name,
+                       acqf_name,
                        path,
                        candidates=None, #dict of tensors {x:,y:}
                        hyperparamaters=None):
@@ -260,7 +280,7 @@ def prediction_plotter(train_x,
                  pred_sigma2_eps,
                  true_f,
                  true_sigma2,
-                 name, 
+                 acqf_name, 
                  path, #TODO Supply as path + prediction folder loc
                  candidates,
                  hyperparamaters)
@@ -276,6 +296,6 @@ def acqf_plotter(n_grid,model,acq_func,name,path,replications=[1,5,10]):
     #Plot and save acq fig
     acqf_plot(grid_xn,
               acq_vals,
-              name,
+              acqf_name,
               path
               )
