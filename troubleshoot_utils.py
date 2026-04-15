@@ -1,15 +1,22 @@
 from pathlib import Path
-from exp_utils import TKWARGS
+from DES_acqfs import _inverse_log_transform,_transform_GP
 import torch as st
 import matplotlib.pyplot as plt
-#TODO Import tkwargs from exp_utils
 
 DPI = 500
-LOG_FNAME = "/log"
+FIGSIZE = (8,12) #Global figsize for variable
+LOG_FNAME = "/Log"
+
+TKWARGS = {
+    "dtype": st.double,# Datatype used by tensors
+    "device": st.device("cuda" if st.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
+}
 #TODO Double check if this folder is uppercase
 # #TODO UTILS
 
-def get_files(dir_name,file_names,add=""):
+def get_files(exp_name,dir_name,file_names,add=""):
+	indir = Path(exp_name + f"/{dir_name}")
+
 	data = {}
 	for file_name in file_names:
 
@@ -112,6 +119,8 @@ def _get_hypers_vihgp(model):
 
     #NOTE: Do with grad
 
+
+
 def _get_hypers_skhgp(model):
     """
     Subprocess for get_hyperparamaters for stochastic kriging model
@@ -127,11 +136,11 @@ def sausage_plot(train_x,
                  pred_sigma2_eps,
                  true_f,
                  true_sigma2,
-                 acqf_name,
                  path,
+                 f_name,
+                 plot_title="Predictions",
                  hyperparamaters =None,
                  candidates = None, #dict #TODO: Arrange canddiates 
-                 run_params = None, #dict {m:}
                  ):
     
     """
@@ -140,17 +149,22 @@ def sausage_plot(train_x,
 
     """
     #Declare variables
-    plot_title = f"predictions"
 
-    if run_params is not None:
-        plot_title = plot_title + f"|m={run_params['m']}|t={run_params['t']}|"
+    #If not plotting within loop
+    # print(f"grid_x{grid_x.shape}")
+    # print(f"train_x{train_x.shape}")
+    # print(f"true_f{true_f.shape}")
+    # print(f"pred_f{pred_f.shape}")
+    # print(f"pred_sigma2_f{pred_sigma2_f.shape}")
+  
+    
     if hyperparamaters is not None:
         #TODO Include hyperparamaters
         plot_title = plot_title + f"|Hyperparamaters|"
     
 
 
-    fig,ax = plt.subplots(1,1,figsize=(8,14))
+    fig,ax = plt.subplots(1,1,figsize=FIGSIZE)
     
     #Plot Observations
     ax.plot(train_x,train_y, "o", label="Evals", alpha=0.5)
@@ -161,7 +175,8 @@ def sausage_plot(train_x,
 
     #Plot candidates if given
     if candidates is not None:
-        new_x, new_y = candidates
+        
+        new_x, new_y = candidates.values()
         ax.plot(new_x,new_y,'r*',label="Candidates")
 
     #Plot +/- epistemic uncretainty sigma
@@ -191,6 +206,8 @@ def sausage_plot(train_x,
             alpha=0.15,
             label="±2 std (truth)",
     )
+    #Force Limits for strange behaviour
+    ax.set_ylim(-2.5,2.5)
 
     #Axis labels and legends
     ax.set_xlabel("$x$")
@@ -198,14 +215,16 @@ def sausage_plot(train_x,
     ax.set_title(plot_title)
     ax.legend(loc="lower left",ncol=3)
 
-    #TODO Savefig at subdir: preds w/name: acqf_pred_m_t
-    outdir = Path(path + LOG_FNAME +"/preds")
-    fname = f"{acqf_name}_pred_{run_params['m']}_{run_params['t']}.png"
-    plt.savefig(outdir / fname, dpi=DPI, bbox_inches="tight")
+    #Savefig at subdir: preds w/name: acqf_pred_m_t
+    
+    plt.savefig(path / f_name, dpi=DPI, bbox_inches="tight")
+    plt.close()
 
 def input_generator(n_grid,bounds=[0,1],replications=None):
     """
     Should be able to also pass input to AF for different selections of n
+    
+    Optional boudns to be handled later
     """    
 
     #Includes n if replications is not none
@@ -215,36 +234,96 @@ def input_generator(n_grid,bounds=[0,1],replications=None):
 
     # Generates grid of x and n values if replications given
     if replications is not None:
-        grid_x = st.stack([
+        grid_xn = st.stack([
             grid_x.repeat(len(replications)),          # column 0
             replications.repeat_interleave(len(grid_x))  # column 1
         ], dim=1)
 
-    return grid_x
+        #If replications supplied
+        return {"xn":grid_xn,"x":grid_x.unsqueeze(-1)}
+
+    return grid_x.unsqueeze(-1)
+
+
+
 def _predict_skhgp(grid_x,model,outcome_transform):
 
-    """b
-    
     """
-    pred_f = 0
-    return pred_f
+    Obtains the predictions for the stochastic kriging model
+    """
+    #Generate posteriors for prediction grid
+    with st.no_grad():
+        posterior_f = model['f'].posterior(grid_x)
+        posterior_g = model['eps'].posterior(grid_x)
+
+    #Calculatte predicted variance
+    sigma_2_eps = posterior_g.mean
+    sigma_2_eps_var = posterior_g.variance
+
+    ##Transform predicted variance
+    sigma_2_eps, sigma_2_eps_var = _transform_GP(
+                sigma_2_eps, sigma_2_eps_var, outcome_transform['eps']
+            )
+    sigma_2_eps = (
+        _inverse_log_transform(
+            sigma_2_eps, sigma_2_eps_var, outcome_transform['eps']
+        )
+        * outcome_transform['f'].sig_std
+    )
+
+    #Calculate the predicted mean
+    mean_f = posterior_f.mean
+    sigma_2_f = posterior_f.variance
+
+    mean_f,sigma_2_f = _transform_GP(mean_f,
+                                    sigma_2_f,
+                                    outcome_transform['f'])
+
+    return mean_f, sigma_2_f, sigma_2_eps
+    
+
+    return pred_f,pred_sigma2_f,pred_sigma2_eps
 def _predict_vihgp(grid_x,model,outcome_transform):
 
     """
-    
+    Generates the predictions from the vihgp model
     """
+    #Generate posteriors for prediction grid
+    with st.no_grad():
+        posterior_f = model.posterior(grid_x)
+        posterior_g = model.noise_posterior(grid_x)
 
-    return pred_f
+    #Calculatte predicted variance
+    sigma_2_eps = posterior_g.mean
+    sigma_2_eps_var = posterior_g.variance
+
+    ##Transform predicted variance
+    sigma_2_eps = (
+                _inverse_log_transform(sigma_2_eps, sigma_2_eps_var, outcome_transform)
+                * outcome_transform.sig_std
+            )
+
+    #Calculate the predicted mean
+    mean_f = posterior_f.mean
+    sigma_2_f = posterior_f.variance
+
+    mean_f,sigma_2_f = _transform_GP(mean_f,
+                                    sigma_2_f,
+                                    outcome_transform)
+
+    return mean_f, sigma_2_f,sigma_2_eps
 def predictor(n_grid,model,outcome_transform):
 
     #Generate Grid <- by default over [0,1]
-    grid_x,_ = input_generator(n_grid,bounds)
+    grid_x = input_generator(n_grid)
 
     #Determine model to use and export prediction
-    if statement:
-        return grid_x, _predict_skhgp(grid_x,model,outcome_transform)
+    if isinstance(model,dict):
+        pred_f,pred_sigma2_f,pred_sigma2_eps = _predict_skhgp(grid_x,model,outcome_transform)
+        return grid_x,pred_f,pred_sigma2_f,pred_sigma2_eps
     else:
-        return grid_x, _predict_vihgp(grid_x,model,outcome_transform)          
+        pred_f,pred_sigma2_f,pred_sigma2_eps = _predict_vihgp(grid_x,model,outcome_transform) 
+        return grid_x,pred_f,pred_sigma2_f,pred_sigma2_eps         
 
 def prediction_plotter(train_x,
                        train_y,
@@ -254,7 +333,8 @@ def prediction_plotter(train_x,
                        acqf_name,
                        path,
                        candidates=None, #dict of tensors {x:,y:}
-                       hyperparamaters=None):
+                       hyperparamaters=None,
+                       run_params = None,):
     
     """
     Creates a sausage plot of the supplied model and includes observations and most recent candidate point
@@ -264,6 +344,10 @@ def prediction_plotter(train_x,
     grid_x,pred_f,pred_sigma2_f,pred_sigma2_eps = predictor(n_grid,model,outcome_transform)
 
     # TODO: Import Target from Input subdir
+    test_data = get_files(path,"Input",['test_y','test_sigma2'])
+    true_f = test_data['test_y']
+    true_sigma2 = test_data['test_sigma2']
+
     """
     Comment:
     Just import the target function which is used by experiment handler.
@@ -272,30 +356,109 @@ def prediction_plotter(train_x,
     We are given the path, so we can just use that to work out where Input is and extract it
     """
     #Plot and save sausage plot figure
-    sausage_plot(train_x,
-                 train_y,
-                 grid_x,
-                 pred_f,
-                 pred_sigma2_f,
-                 pred_sigma2_eps,
-                 true_f,
-                 true_sigma2,
-                 acqf_name, 
-                 path, #TODO Supply as path + prediction folder loc
-                 candidates,
-                 hyperparamaters)
+    plot_title = "Prediction"
+    outdir = Path(path + LOG_FNAME +"/preds")
+    if run_params is not None:
+        plot_title = plot_title + f"|m={run_params['m']}|t={run_params['t']}|"
+        f_name = f"{acqf_name}_pred_{run_params['m']}_{run_params['t']}.png"
+    else:
+        f_name = f"{acqf_name}_pred.png"
+
+    if candidates is not None:
+        candidates['x'] = candidates['x'].squeeze(-1)
+        candidates['y'] = candidates['y'].flatten()
+
+    sausage_plot(train_x=train_x.squeeze(-1),
+                 train_y = train_y.flatten(),
+                 grid_x=grid_x.squeeze(-1),
+                 pred_f=pred_f.flatten(),
+                 pred_sigma2_f=pred_sigma2_f.flatten(),
+                 pred_sigma2_eps=pred_sigma2_eps.flatten(),
+                 true_f=true_f.flatten(),
+                 true_sigma2=true_sigma2.flatten(),
+                 path=outdir, 
+                 f_name=f_name,
+                 plot_title=plot_title, 
+                 candidates=candidates,
+                 hyperparamaters=hyperparamaters)
     
 #TODO AF TROUBLESHOOTING FUNCTIONS
 
-def acqf_plotter(n_grid,model,acq_func,name,path,replications=[1,5,10]):
+def acqf_plot(grid_xn,
+              acq_vals,
+              path,
+              f_name,
+              plot_title,):
+    '''
+    Plots the predicted intrinsic uncertainty (sigma^2_eps) and extrinsic uncertainty (sigma^2_f)
+    of the Gaussian Process at a give iteration
+
+    Inputs
+    ------
+        N_points: Tensor
+            Number of grid points to make prediction
+        AF: AcquisitionFunction
+            An initalised Acquisition Function
+        n_vals: int Tensor
+            Chosen n value 
+        fig_title: String Optional[Default=None] 
+            Title of the figure if needed.
+        f_name: String Optional[Default=None]
+            If a filename string is supplied the generated figure will be automatically saved under
+            that name. Format must be supplied in f_name i.e. .png or .eps
+        new_point: bool Optional[Default=False]
+            Highlights the selected candidate if set to true
+    '''
+   
+
+    # Initialize plot
+    plt.figure(figsize=FIGSIZE)
+    
+    #Get grids
+    grid_x = grid_xn['x']
+    grid_xn = grid_xn['xn']
+    n_vals = grid_xn[...,1].unique()
+    with st.no_grad():
+        for i, n in enumerate(n_vals):
+            plt.plot(grid_x,acq_vals[i],label=f"n={n}")
+
+    plt.xlabel('$x$')
+    plt.ylabel('$AF(x)$')
+    plt.title(plot_title)
+    plt.legend()
+    
+    #Savefig at subdir: acqs w/name: acqf_acqs_m_t
+    
+    plt.savefig(path / f_name, dpi=DPI, bbox_inches="tight")
+    plt.close()
+    
+
+def acqf_plotter(n_grid,
+                 acq_func,
+                 acqf_name,
+                 path,
+                 run_params=None,
+                 replications=st.tensor([1,5,10])):
 
     #Generate Grid
-    grid_xn = input_generator(n_grid,bounds,replications)
+    grid_xn = input_generator(n_grid,replications=replications)
+    
     #Obtain acqf values
+    acq_vals = acq_func(grid_xn['xn'].unsqueeze(1))
+    plot_title = "acq vals"
+
+    if run_params is not None:
+        plot_title = plot_title + f"|m={run_params['m']}|t={run_params['t']}|"
+        f_name = f"{acqf_name}_acqf_{run_params['m']}_{run_params['t']}.png"
+    else:
+        f_name = f"{acqf_name}_acqf.png"
+
+    outdir = Path(path + LOG_FNAME +"/acqs")
 
     #Plot and save acq fig
-    acqf_plot(grid_xn,
-              acq_vals,
-              acqf_name,
-              path
+    acqf_plot(grid_xn=grid_xn,
+              acq_vals=acq_vals.reshape(replications.shape[0],n_grid),
+              path=outdir,
+              f_name = f_name,
+              plot_title=plot_title
               )

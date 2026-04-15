@@ -300,7 +300,7 @@ def get_nxk_inital_evals(k,n,target_function,x_min,x_max,moments=0):
     #Generate y values from latent function plus heteroscedastic Gaussian noise
     #Outputs train_y of shape [n,k]
     train_x, train_y,train_sigma2 = target_function.eval_target_noisy(train_x,train_n,moments)
-
+    
     return train_x,train_n,train_y,train_sigma2,target_function
 
 
