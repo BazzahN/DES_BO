@@ -348,6 +348,8 @@ class BODES_IG(MaxValueBase):
             A `batch_shape`-dim Tensor of MVE values at the given design points `X`.
         """
         ##Marshall input
+        #print(f"acqf X: {X.shape}")
+        #Input is [k,1,2] or [k,1,d+1]
         N = X[...,-1] #shape [k,1]
         X_in = X[...,:-1] #shape [k,1,1]
 

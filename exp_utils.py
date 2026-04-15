@@ -3,6 +3,7 @@ from torch import Tensor
 import matplotlib.pyplot as plt
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq,BODES_IG,_model_type
+from troubleshoot_utils import prediction_plotter, acqf_plotter, get_hyperparamaters,export_hyperparamaters
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -607,7 +608,8 @@ class experiment_handler:
     def __init__(self, 
                  target,
                  BO_handler,
-                 troubleshoot,):
+                 troubleshoot,
+                 additional_paramaters,):
         
         #NOTE: Could probably handle with class inheritence
         # Assign BO relevant args
@@ -620,6 +622,13 @@ class experiment_handler:
         self.target = target
         # If true, outputs prediction, AFs and hyperparamater plots
         self.troubleshoot = troubleshoot
+
+        #Include experiment path as additional variable
+        # Include acqf name as additional variable
+        self.additional_paramaters = additional_paramaters
+        
+        #Current Macroreplication - so other methods can access
+        self.m = 0
     
     #TODO Import method to run at an indexed macroreplication
     def run_T_BO_iters(self,T,
@@ -637,34 +646,68 @@ class experiment_handler:
         model, output_handle,hyperparamaters = self.model_call(train_x,train_n,train_y,train_sigma2)
         
         if self.troubleshoot:
-                #TODO Insert prediction plotter here
+            prediction_plotter(train_x=train_x,
+                                train_y=train_y,
+                                n_grid=self.additional_paramaters['n_grid'],
+                                model=model,
+                                outcome_transform=output_handle,
+                                acqf_name=self.additional_paramaters['acqf_name'],
+                                path=self.additional_paramaters['path'],
+                                run_params = {"m":self.m,"t":0},
+                            #    hyperparamaters=hyperparamaters,
+                                )
+                
+               
                 #TODO Insert AF printer here
                 #TODO Insert hyperparamater exporter here
-                print("coming soon")
         
         #Best f_acqf
         x_strs, f_strs = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
 
   
-        for t in range(0,T):
+        for t in range(1,T+1):
             print(f'Starting iter {t} of {T}....\n',flush=True)
             #sys.stdout.write(f'Starting iter {t} of {T}....\n')
             #sys.stdout.flush()
-
+            #Stores previous observations to quiclky determine candidate
+            train_y_back = train_y
+            
             #Runs single iteration of BO
-            model,AF,train_x,train_n,train_y,train_sigma2,output_handle = self.BO_handler(model,
-                                                                                            train_x,
-                                                                                            train_n,
-                                                                                            train_y,
-                                                                                            train_sigma2,
-                                                                                            self.target,
-                                                                                            output_handle)   
+            model,AF,train_x,train_n,train_y,train_sigma2,output_handle,hyperparamaters = self.BO_handler(model,
+                                                                                                            train_x,
+                                                                                                            train_n,
+                                                                                                            train_y,
+                                                                                                            train_sigma2,
+                                                                                                            self.target,
+                                                                                                            output_handle)   
             
             if self.troubleshoot:
-                #TODO Insert prediction plotter here
-                #TODO Insert AF printer here
+                new_id = train_y.shape[0] - train_y_back.shape[0]
+
+                candidates_x = train_x[-new_id:]
+                candidates_y = train_y[-new_id:]
+                
+                # train_x_in = train_x[:new_id]
+                # train_y_in = train_y[:new_id]
+                prediction_plotter(train_x=train_x,
+                                    train_y=train_y,
+                                    n_grid=self.additional_paramaters['n_grid'],
+                                    model=model,
+                                    outcome_transform=output_handle,
+                                    acqf_name=self.additional_paramaters['acqf_name'],
+                                    path=self.additional_paramaters['path'],
+                                    candidates={"x":candidates_x,"y":candidates_y},
+                                    run_params = {"m":self.m,"t":t},
+                                #    hyperparamaters=hyperparamaters,
+                                )
+
+                acqf_plotter(n_grid=self.additional_paramaters['n_grid'],
+                             acq_func=AF,
+                             acqf_name=self.additional_paramaters['acqf_name'],
+                             path=self.additional_paramaters['path'],
+                             run_params={"m":self.m,"t":t}) 
                 #TODO Insert hyperparam exporter here 
-                print("coming soon")
+            
             
             #Best f_acqf
             x_best, f_best_SEI = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
@@ -696,7 +739,8 @@ class experiment_handler:
         #TODO seed splitter for m replications
         for m in range(0,M):
             print(f'[SIM]Starting macroreplication {m} of {M}....\n',flush=True)
-
+            #Update m for every macroreplications
+            self.m = m
             out_x,out_n,out_y,out_sigma2,x_str,f_str =self.run_T_BO_iters(T,
                                                                                   train_x[m],
                                                                                   train_n[m],
@@ -728,6 +772,31 @@ class experiment_handler:
         f_strs = torch.stack(f_strs)
 
         return xs,ns,ys,sigma2s,x_strs,f_strs
+    
+    def run_mT_BO_macros(self,m,
+                              T,
+                              train_x,
+                              train_n,
+                              train_y,
+                              train_sigma2,
+                              rngs,
+                              ):
+        """
+        Run single macroreplication at chosen index. Note: requires access to complete generated dataset
+        """
+        print(f'[SIM]Running macroreplication {m}',flush=True)
+        #Update m for every macroreplications
+        self.m = m
+        out_x,out_n,out_y,out_sigma2,x_str,f_str =self.run_T_BO_iters(T,
+                                                                        train_x[m],
+                                                                        train_n[m],
+                                                                        train_y[m],
+                                                                        train_sigma2[m],
+                                                                        rngs[m])
+
+        #Append all data to lists
+
+        return out_x,out_n,out_y,out_sigma2,x_str,f_str
 
 
 

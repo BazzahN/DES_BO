@@ -16,7 +16,7 @@ def main():
     ##Import arguments from the command line
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    # parser.add_argument("--outdir", required=True)
+    parser.add_argument("--macro",type=int,required=True)
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -32,7 +32,7 @@ def main():
     #Experimental Parameters
     T = study_args['T'] #Number of iterations
     M = study_args['M'] #Number of MacroReplications
-
+    m = args.macro # Selected macroreplication
 
     # Problem Constants
     k= gen_args["k"] #Number of points
@@ -127,12 +127,13 @@ def main():
                                             )
         ##Run experiment
         
-        out = run_experiment.run_MT_BO_macros(M,T,**data_in)
+        out = run_experiment.run_mT_BO_macros(m,T,**data_in)
+
         print(f'....Ending Experiment: {model}....\n')
-        print(f'Results in {outdir}\n')
+        print(f'Results have not been saved')
         #Save results as tensors
-        for name,d in zip(names_out,out):
-            torch.save(d,outdir /  f"{model}_{name}.pt")
+        # for name,d in zip(names_out,out):
+        #     torch.save(d,outdir /  f"{model}_{name}.pt")
 
 
 if __name__ == "__main__":

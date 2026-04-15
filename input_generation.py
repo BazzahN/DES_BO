@@ -75,7 +75,6 @@ def main():
     train_n = torch.empty(size=(M,k,1))
     train_y = torch.empty(size=shape_tuple)
     train_sig2 = torch.empty(size=(M,k,1))
-
     rng_smple = Generators[0].get_state().size()
     init_rng = torch.empty(size=(M,rng_smple[0]))
 
@@ -90,7 +89,6 @@ def main():
         # train_x,train_n,train_y,train_sig2,test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
         train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
         init_rng[i] = test_class.get_rng_state()
-
         ## Ouput Dataset D=(x,n,y,sigma2)
 
 
