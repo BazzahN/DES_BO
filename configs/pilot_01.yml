@@ -1,0 +1,31 @@
+experiment_name: Pilot_01
+models:
+  - IG
+  - AEI
+
+optim: 1.2443101894404267
+GP: sk
+misc:
+  troubleshoot: True
+  n_grid: 200
+  vihgp:
+   iters: 800
+   n_u: 10
+problem:
+  b0: 1
+  b1: 0.5
+  k: 10
+  n: 5
+  n_v: 5
+  n_max: 100
+  n_min: 4
+  noise_function_index: 0
+  phi: 0.6
+  seed: 12345
+  tau: 0.7
+  test_function_index: 0
+  x_max: 1.0
+  x_min: 0.0
+study:
+  M: 25
+  T: 10

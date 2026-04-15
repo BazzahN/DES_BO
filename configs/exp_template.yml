@@ -8,9 +8,11 @@ models:
   - IG
   - AEI
 
+GP: "sk"
 problem:
   k: 5
   n: 10
+  n_v: 10
   x_min: 0.0
   x_max: 1.0
   n_min: 3
@@ -23,5 +25,10 @@ problem:
   b0: 1
   b1: 0.5
 
-plots:
+misc:
+  troubleshoot: False
   n_grid: 200
+  vihgp:
+   iters: 800
+   n_u: 10
+  

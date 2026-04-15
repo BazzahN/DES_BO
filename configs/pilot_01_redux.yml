@@ -1,0 +1,27 @@
+BO:
+  acqf_id: 0
+  n_grid: 200
+experiment_name: Pilot_01
+models:
+- IG
+- AEI
+optim: 1.2443101894404267
+plots:
+  n_grid: 200
+problem:
+  b0: 1
+  b1: 0.5
+  k: 5
+  n: 10
+  n_max: 100
+  n_min: 3
+  noise_function_index: 0
+  phi: 0.6
+  seed: 12345
+  tau: 0.7
+  test_function_index: 0
+  x_max: 1.0
+  x_min: 0.0
+study:
+  M: 25
+  T: 10
