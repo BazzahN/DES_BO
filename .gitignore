@@ -206,7 +206,12 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-
+#Ignore Raw Data files - write this to be more specific to allow for the analysis plots
+**/*.png 
+!**/Analysis/*.png
+#Ignore Log Files
+*.log
+*.zip
 #Data and Input
 Data/
 Input/
