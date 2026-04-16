@@ -116,6 +116,22 @@ def noise_function_2(x,phi=0,tau=1):
     '''
     return tau *torch.ones_like(x)
 
+#TODO Not yet implemented until I incorperate its deviations into the main code. This could be interesting
+def noise_function_3(x,phi=0,tau=1):
+    '''
+    Plots the underlying homoscedastic noise surface for the test problem,
+    defined as:
+    \sigma_eps(x) = |\\tau^2 \times f(x)|
+
+    Inputs
+    ------
+    x: tensor
+        The test/train locations for the GP. Here x \in [0,1]
+    sigma_0: float
+        Scale of the heteroscedastic noise function
+    '''
+    return tau *torch.ones_like(x)
+
 from botorch.models.deterministic import DeterministicModel
 
 class InverseLinearCostModel(DeterministicModel):
@@ -316,7 +332,8 @@ TEST_FUNCTION_DIAL = [test_function_1,
                       test_function_2]
 
 NOISE_FUNCTION_DIAL =[noise_function_1,
-                      noise_function_2]
+                      noise_function_2,
+                      noise_function_3]
 
 '''
 Store test function names to be used in report writing.
@@ -325,6 +342,7 @@ or remove any.
 '''
 
 TEST_FUNCTION_NAMES = ["f(x) = \\sin(5x) + \\cos(7x)",
-                       "f(x) = \\sin(x) + \\cos(\\frac{10}{3}x)"]
+                       "f(x) = \\sin(x) + \\cos(\\frac{{10}}{{3}}x)"]
 NOISE_FUNCTION_NAMES =["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
-                        "\\sigma^2_{\\varepsilon}(x) = \\tau^2"]
+                        "\\sigma^2_{\\varepsilon}(x) = \\tau^2",
+                        "\\sigma^2_{\\varepsilon}(x) = |\\tau^2 \\times f(x)|"]
