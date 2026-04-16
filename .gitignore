@@ -209,6 +209,7 @@ __marimo__/
 #Ignore Raw Data files - Doesn't upload raw data but uploads results analysis files
 **/*.png 
 !**/Analysis/*.png
+#!Pilot_02 VIHGP/**/*.png
 #Ignore Log Files
 *.log
 *.zip

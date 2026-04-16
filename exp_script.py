@@ -120,11 +120,21 @@ def main():
                       "acqf_name":model,
                       "n_grid":n_grid} #For storage of additional information
         
-        run_experiment = experiment_handler(target,
-                                            experiment,
-                                            troubleshoot,
-                                            add_params
-                                            )
+        #Automatically switch off troubleshoot if vanilla supplied
+        if model == "vanilla":
+            print("Troubleshooting tools doesn't support EI. Setting troubleshoot=False")
+            run_experiment = experiment_handler(target,
+                                                experiment,
+                                                troubleshoot=False,
+                                                additional_paramaters=add_params,
+                                                )
+        else:
+            run_experiment = experiment_handler(target,
+                                                experiment,
+                                                troubleshoot,
+                                                add_params
+                                                )
+        
         ##Run experiment
         
         out = run_experiment.run_MT_BO_macros(M,T,**data_in)
