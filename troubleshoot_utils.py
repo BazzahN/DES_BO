@@ -1,6 +1,7 @@
 from pathlib import Path
 from DES_acqfs import _inverse_log_transform,_transform_GP
 import torch as st
+import json
 import matplotlib.pyplot as plt
 
 DPI = 500
@@ -25,63 +26,9 @@ def get_files(exp_name,dir_name,file_names,add=""):
 	return data
 
 #TODO HYPERPARAMATER HANDLING FUNCTIONS
-
-#NOTE: Use for get_hyperparamaters function
-def get_model_hypers(model):
-
-    def convert_to_correlation(m):
-
-        inv = st.inverse(st.diag(st.diag(m)).sqrt())
-
-        r = inv@m@inv
-        return r
-
-
-    #Get covar matrix
-
-    covar_mat = model.task_covar_module._eval_covar_matrix()
-    
-    corr_mat = convert_to_correlation(covar_mat)
-
-    #Extract Means and stdvs used to standardise to N(0,1)    
-
-    std_stdvs = model.outcome_transform.stdvs
-    std_means = model.outcome_transform.means
-    
-
-    #Mean function constant value
-
-    mean_func = model.mean_module.constant.detach()
-
-    #Lengthscale 
-
-    lengthscale = model.covar_module.lengthscale.detach()
-        
-    global_noise = model.likelihood.noise.detach()
-    
-    hyperparams_dict = dict(mean_func = mean_func.numpy(),
-                            l_scale = lengthscale.numpy(),
-                            covar_mat = covar_mat.detach().numpy(),
-                            corr_mat = corr_mat.detach().numpy(),
-                            obsv_noise = global_noise.numpy(),
-                            ot_means = std_means.numpy(),
-                            ot_sds = std_stdvs.numpy())
-    
-    ls = hyperparams_dict['l_scale'].flatten()
-    #TODO: Implement more flexible version, atm this is only suited to 2 dims
-    #Probably have to export correlation matrix sperately, as it is going to get more cumbersome with increasing dimension size. 
-    hyperparams_dict_reduced = dict(mean_func = hyperparams_dict['mean_func'],
-                                    lscl_x1 = ls[0],
-                                    lscl_x2 = ls[1],
-                                    corr_mat_od = hyperparams_dict['corr_mat'][0,1],
-                                    obsv_noise = hyperparams_dict['obsv_noise'].item(),
-                                    ot_means = hyperparams_dict['ot_means'].item(),
-                                    ot_sds = hyperparams_dict['ot_sds'].item())
-
-    return hyperparams_dict_reduced
-def export_hyperparamaters(path,acqf_name,hyperparamaters):
+def export_hyperparamaters(path,acqf_name,run_params,hyperparamaters):
     """
-    Exports hyperparamaters in x format under the chosen name and saves in the chosen path
+    Exports hyperparamaters in json format under the chosen name and saves in the chosen path
 
     paramaters:
         path: path
@@ -91,33 +38,78 @@ def export_hyperparamaters(path,acqf_name,hyperparamaters):
     
     """
 
+    outdir = Path(path + LOG_FNAME +"/hyperparamaters")
+    if run_params is not None:
+        f_name = f"{acqf_name}_hyperparams_{run_params['m']}_{run_params['t']}.json"
+    else:
+        f_name = f"{acqf_name}__hyperparams.json"
+    
+    outdir = outdir / f_name
+    with open(outdir,"w") as outdir:
+        json.dump(hyperparamaters,outdir)
+  
 
-
-    print("stop")
-
-
-def get_hyperparamaters(model):
-
+def get_hypers_vihgp(model):
     """
-    Exports paramaters from the given GP model into a dictionary
-
-    paramaters:
-
-    returns:
-        hyperparamaters: dict
-            Dictionary of hyperparamaters.
+    Subprocess for get_hyperparamaters for the VI-HGP.
+    This returns a dictionary including
+    - The kernel function outputscales (if included)
+    - The kernel function lengthscales 
+    - The mean function constant
+    - Inducing point means
+    - Indcuing point locations
     """
+    model = model.model
 
-    #Determines which subprocess to used depending on if SK or VI supplied
-    print("hodl")
+    #Extract Hyperparamaters
+    with st.no_grad():
 
+        try:
+            taus = model.covar_module.outputscale.tolist()
+        except:
+            taus=[0,0]
 
-def _get_hypers_vihgp(model):
-    """
-    Subprocess for get_hyperparamaters
-    """
+        opt_scales_dict = {'tau_1':taus[0],'tau_2':taus[1]}
+        #Extract lengthscale
 
-    #NOTE: Do with grad
+        try:
+            lnth_scales = model.covar_module.base_kernel.lengthscale.flatten().tolist()
+        except:
+            lnth_scales = model.covar_module.lengthscale.flatten().tolist()
+        lnth_scales_dict = {'l_1':lnth_scales[0],'l_2':lnth_scales[1]}
+
+        #Extract Means
+        #If ZeroMean used instead
+
+        try:
+            means = model.mean_module.constant.detach().tolist()
+        except:
+            means = [0,0]
+
+        means_dict = {'mu_1':means[0],'mu_2':means[1]}
+
+        #Extract inducing Means
+        u_means = model.variational_strategy.base_variational_strategy._variational_distribution.variational_mean.detach().tolist()
+        u_means_dict = {'mu_u_1':u_means[0],'mu_u_2':u_means[1]}
+
+        #Extract Inducing Points
+        u_points = model.variational_strategy.base_variational_strategy.inducing_points.flatten().detach().tolist()
+        u_points_dict = {'u':u_points}
+
+    #Compile hyperparameters to dictionary
+    #- Outputscales - if switched on
+    #- Lengthscales 
+    #- Constant Means - if switched on else 0
+    #- Inducing point means 
+    # Inducing point locations
+
+    hyperparameter_dict = dict(opt_scales_dict,
+                           **lnth_scales_dict,
+                           **means_dict,
+                           **u_means_dict,
+                           **u_points_dict)
+    
+    return hyperparameter_dict
 
 
 
@@ -125,6 +117,8 @@ def _get_hypers_skhgp(model):
     """
     Subprocess for get_hyperparamaters for stochastic kriging model
     """    
+    print("not implemented yet")
+    return 0
 
 #TODO PREDICTION HANDELIING FUNCTIONS
 
@@ -206,8 +200,8 @@ def sausage_plot(train_x,
             alpha=0.15,
             label="±2 std (truth)",
     )
-    #Force Limits for strange behaviour
-    ax.set_ylim(-2.5,2.5)
+    #Force Limits for strange behaviour in sk examples
+    #ax.set_ylim(-2.5,2.5)
 
     #Axis labels and legends
     ax.set_xlabel("$x$")

@@ -3,7 +3,7 @@ from torch import Tensor
 import matplotlib.pyplot as plt
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq,BODES_IG,_model_type
-from troubleshoot_utils import prediction_plotter, acqf_plotter, get_hyperparamaters,export_hyperparamaters
+from troubleshoot_utils import prediction_plotter, acqf_plotter, get_hypers_vihgp,export_hyperparamaters
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -153,7 +153,7 @@ class VI_HGP():
     def __init__(self,n_u, #Int: number of inducing points
                  iters, #Int: number of iterations
                  standardise=False,#bool: If true then standardise output
-                 verbose=False
+                 verbose=False,
                 ):
         """
         
@@ -211,8 +211,8 @@ class VI_HGP():
                                      verbose=self.verbose)
 
 
-        #TODO: Insert hyperparamater getter here
-        hyperparamaters = None
+        #Get hyperparamaters from hgp model after conditioning
+        hyperparamaters = get_hypers_vihgp(hgp_model)
 
         #NOTE: In contrast, to get stoch_kriging this just outputs a single class for the model and transformer
         return hgp_model, out_transform, hyperparamaters
@@ -646,6 +646,11 @@ class experiment_handler:
         model, output_handle,hyperparamaters = self.model_call(train_x,train_n,train_y,train_sigma2)
         
         if self.troubleshoot:
+            export_hyperparamaters(path=self.additional_paramaters['path'],
+                                   acqf_name=self.additional_paramaters['acqf_name'],
+                                   run_params={"m":self.m,"t":0},
+                                   hyperparamaters=hyperparamaters)
+
             prediction_plotter(train_x=train_x,
                                 train_y=train_y,
                                 n_grid=self.additional_paramaters['n_grid'],
@@ -657,9 +662,6 @@ class experiment_handler:
                             #    hyperparamaters=hyperparamaters,
                                 )
                 
-               
-                #TODO Insert AF printer here
-                #TODO Insert hyperparamater exporter here
         
         #Best f_acqf
         x_strs, f_strs = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
@@ -681,6 +683,7 @@ class experiment_handler:
                                                                                                             self.target,
                                                                                                             output_handle)   
             
+
             if self.troubleshoot:
                 new_id = train_y.shape[0] - train_y_back.shape[0]
 
@@ -689,6 +692,10 @@ class experiment_handler:
                 
                 # train_x_in = train_x[:new_id]
                 # train_y_in = train_y[:new_id]
+                export_hyperparamaters(path=self.additional_paramaters['path'],
+                                       acqf_name=self.additional_paramaters['acqf_name'],
+                                       run_params={"m":self.m,"t":t},
+                                       hyperparamaters=hyperparamaters)
                 prediction_plotter(train_x=train_x,
                                     train_y=train_y,
                                     n_grid=self.additional_paramaters['n_grid'],
