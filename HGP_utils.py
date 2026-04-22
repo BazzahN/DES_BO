@@ -11,6 +11,9 @@ from botorch.acquisition.objective import PosteriorTransform
 #from botorch.models.model import Model
 from torch.nn import Module
 
+from botorch.models.utils.gpytorch_modules import (get_covar_module_with_dim_scaled_prior
+                                                   ,get_matern_kernel_with_gamma_prior)
+
 
 # ------------------------------------------------------------------
 # 1) Joint latent variational GP (2 latent GPs: f and g)
@@ -56,14 +59,17 @@ class HeteroscedasticLatentGP(gpytorch.models.ApproximateGP):
 
         # Batch-shaped mean and kernel (one for each latent)
         if covar_module is None:
-            covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents])),
-                batch_shape=torch.Size([num_latents])
-            ).to(inducing_points)
-     
+            # covar_module = gpytorch.kernels.ScaleKernel(
+            #     gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents])),
+            #     batch_shape=torch.Size([num_latents])).to(inducing_points)
+
+            # covar_module = get_covar_module_with_dim_scaled_prior(ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)
+            covar_module = get_matern_kernel_with_gamma_prior(ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)              
         
         if mean_module is None:
-            mean_module = gpytorch.means.ZeroMean(batch_shape=torch.Size([num_latents])).to(inducing_points)
+            #NOTE: I had neglected to note down that I had zero mean.
+            # mean_module = gpytorch.means.ZeroMean(batch_shape=torch.Size([num_latents])).to(inducing_points)
+            mean_module = gpytorch.means.ConstantMean(batch_shape=torch.Size([num_latents])).to(inducing_points)
         
         self.mean_module = mean_module
         self.covar_module = covar_module
