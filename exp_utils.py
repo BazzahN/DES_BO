@@ -193,12 +193,14 @@ class VI_HGP():
         # Initialise output_handler objects
         out_transform = output_handler()
 
-        # TODO Standardise Step on y input
-        
         if self.standardise:
             train_y = out_transform.standardise_and_update(train_y)
 
+        #TODO If train_x has n > 1 for VIHGP then train_x will be quite large indeed which will result in identical inducing points being selected.  
+        #Obtain inital inducing points from a subset of train_x data. Therefore n_u < k
+        
         inducing_init = train_x[torch.linspace(0, train_x.size(0) - 1, steps=self.n_u).long()]
+
         #Fit main Model
         hgp_model = HeteroscedasticBOModel(train_x,
                                             train_y,
