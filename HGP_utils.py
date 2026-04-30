@@ -14,7 +14,43 @@ from torch.nn import Module
 from botorch.models.utils.gpytorch_modules import (get_covar_module_with_dim_scaled_prior
                                                    ,get_matern_kernel_with_gamma_prior)
 
+from gpytorch.priors.torch_priors import GammaPrior, LogNormalPrior
+from gpytorch.kernels import MaternKernel, RBFKernel, ScaleKernel
+from gpytorch.priors.torch_priors import GammaPrior, LogNormalPrior
+from math import log, sqrt
+SQRT2 = sqrt(2)
+SQRT3 = sqrt(3)
 
+def get_kernel_with_gamma_prior(
+    kernel_function:str,ard_num_dims: int, batch_shape: torch.Size | None = None
+) -> ScaleKernel:
+    r"""Constructs the Scale-Matern kernel that is used by default by
+    several models. This uses a Gamma(3.0, 6.0) prior for the lengthscale
+    and a Gamma(2.0, 0.15) prior for the output scale.
+    """
+
+    if kernel_function == "matern":
+
+        return ScaleKernel(
+            base_kernel=MaternKernel(
+                nu=2.5,
+                ard_num_dims=ard_num_dims,
+                batch_shape=batch_shape,
+                lengthscale_prior=GammaPrior(3.0, 6.0),
+            ),
+            batch_shape=batch_shape,
+            outputscale_prior=GammaPrior(2.0, 0.15),
+            )
+    elif kernel_function == "rbf":
+         return ScaleKernel(
+            base_kernel=RBFKernel(
+                ard_num_dims=ard_num_dims,
+                batch_shape=batch_shape,
+                lengthscale_prior=GammaPrior(3.0, 6.0),
+            ),
+            batch_shape=batch_shape,
+            outputscale_prior=GammaPrior(2.0, 0.15),
+            )
 # ------------------------------------------------------------------
 # 1) Joint latent variational GP (2 latent GPs: f and g)
 # ------------------------------------------------------------------
@@ -59,11 +95,14 @@ class HeteroscedasticLatentGP(gpytorch.models.ApproximateGP):
 
         # Batch-shaped mean and kernel (one for each latent)
         if covar_module is None:
+            # lengthscale_prior = LogNormalPrior(loc=SQRT2 + log(1) * 0.5, scale=SQRT3)
             # covar_module = gpytorch.kernels.ScaleKernel(
-            #     gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents])),
-            #     batch_shape=torch.Size([num_latents])).to(inducing_points)
+            #     gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents]),
+            #                                lengthscale_prior=lengthscale_prior),
+            #                                batch_shape=torch.Size([num_latents]),).to(inducing_points)
 
-            # covar_module = get_covar_module_with_dim_scaled_prior(ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)
+            # covar_module = get_kernel_with_gamma_prior("matern",ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)
+            #covar_module = get_covar_module_with_dim_scaled_prior(ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)
             covar_module = get_matern_kernel_with_gamma_prior(ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)              
         
         if mean_module is None:
@@ -150,10 +189,13 @@ class HeteroscedasticGaussianLikelihood(gpytorch.likelihoods.Likelihood):
         sqr_term = (target - f_mean) ** 2
 
         log_prob = -0.5 * (np.log(2.0 * math.pi) + g_mean + (sqr_term + sigma2_f) * sigma2_eps_inv)
-
+        
         # Sum over datapoints -> (num_samples,)
         log_prob_sum = log_prob.sum(dim=-1)
-
+        print(f"[OUT] Expected Lhood:{torch.exp(log_prob_sum)}")
+        # print(f"[OUT] g_mean :{g_mean[0]}")
+        # print(f"[OUT] fvar :{sigma2_f[0]}")
+        # print(f"[OUT] eps_inv :{sigma2_eps_inv[0]}")
         return log_prob_sum
     
     ##NOTE FORWARD METHOD DOES NOTHING. IT EXISTS TO MAKE LIKELIHOOD CLASS INHERITENCE WORK
@@ -397,12 +439,12 @@ def fit_vihgp_elbo(model,elbo,iters,verbose=False):
     train_y = model.train_y
 
     q_model.train()
-    optimiser=torch.optim.Adam(q_model.parameters(),lr=0.01)
+    optimiser=torch.optim.Adam(q_model.parameters(),lr=0.01) #Adam is minimising
     for i in range(iters):
-        optimiser.zero_grad()
+        optimiser.zero_grad() #Resets the gradients of all model parameters
         q_distb = q_model(train_x)
 
-        loss = -elbo(q_distb,train_y)
+        loss = -elbo(q_distb,train_y)#Negative Elbo
         loss.backward()
         optimiser.step()
 

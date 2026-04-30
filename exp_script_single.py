@@ -130,10 +130,10 @@ def main():
         out = run_experiment.run_mT_BO_macros(m,T,**data_in)
 
         print(f'....Ending Experiment: {model}....\n')
-        print(f'Results have not been saved')
-        #Save results as tensors
-        # for name,d in zip(names_out,out):
-        #     torch.save(d,outdir /  f"{model}_{name}.pt")
+        print(f'Results have been saved to {outdir} w/ macro label')
+        # Save results as tensors
+        for name,d in zip(names_out,out):
+            torch.save(d,outdir /  f"{model}_{name}_m{m}.pt")
 
 
 if __name__ == "__main__":

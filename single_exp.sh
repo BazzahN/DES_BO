@@ -9,5 +9,5 @@ echo "================================="
 
 
 echo "Running experiment script"
-conda run --no-capture-output -n que python -u exp_script_single.py --macro $MACRO --config "configs/$CONFIG" | tee "$CONFIG".log
+conda run --no-capture-output -n que python -u exp_script_single.py --macro $MACRO --config "configs/$CONFIG" | tee "logs/$CONFIG".log
 echo "done"

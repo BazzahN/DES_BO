@@ -1,6 +1,5 @@
 import torch
 from torch import Tensor
-import matplotlib.pyplot as plt
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
 from DES_acqfs import DES_EI, AEI_fq,BODES_IG,_model_type
 from troubleshoot_utils import prediction_plotter, acqf_plotter, get_hypers_vihgp,export_hyperparamaters

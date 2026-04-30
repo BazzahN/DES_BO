@@ -67,7 +67,7 @@ def get_hypers_vihgp(model):
         try:
             taus = model.covar_module.outputscale.tolist()
         except:
-            taus=[0,0]
+            taus=[1,1]
 
         opt_scales_dict = {'tau_1':taus[0],'tau_2':taus[1]}
         #Extract lengthscale
@@ -120,7 +120,7 @@ def _get_hypers_skhgp(model):
     print("not implemented yet")
     return 0
 
-#TODO PREDICTION HANDELIING FUNCTIONS
+# PREDICTION HANDELIING FUNCTIONS
 
 def sausage_plot(train_x,
                  train_y,
