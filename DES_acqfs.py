@@ -288,6 +288,7 @@ class BODES_IG(MaxValueBase):
         output_transform, #Unstandardise GP output
         candidate_set: Tensor,
         num_mv_samples: int = 10,
+        hold_n: int | None = None,
         posterior_transform: PosteriorTransform | None = None,
         use_gumbel: bool = True,
         maximize: bool = True,
@@ -303,6 +304,7 @@ class BODES_IG(MaxValueBase):
                 discretize the design space. Max values are sampled from the
                 (joint) model posterior over these points.
             num_mv_samples: Number of max value samples.
+            hold_n: Ignores replication selection and keeps n at a constant value
             posterior_transform: A PosteriorTransform. If using a multi-output model,
                 a PosteriorTransform that transforms the multi-output posterior into a
                 single-output posterior is required.
@@ -325,6 +327,8 @@ class BODES_IG(MaxValueBase):
             X_pending=X_pending,
             train_inputs=train_inputs,
         )
+
+        self.hold_n = hold_n
         #Assign Posteriors
         self.model_eps_posterior = model_eps_posterior
         self.model_f_posterior = model_f_posterior
@@ -332,8 +336,6 @@ class BODES_IG(MaxValueBase):
         self.output_transform = output_transform
         self.cost_model = cost_model
         self.set_X_pending(X_pending)
-
-    #NOTE:CHANGE: Override forward method 
 
     @t_batch_mode_transform(expected_q=1)
     # @average_over_ensemble_models
@@ -350,8 +352,12 @@ class BODES_IG(MaxValueBase):
         ##Marshall input
         #print(f"acqf X: {X.shape}")
         #Input is [k,1,2] or [k,1,d+1]
-        N = X[...,-1] #shape [k,1]
-        X_in = X[...,:-1] #shape [k,1,1]
+        if self.hold_n is not None:
+            N= self.hold_n*torch.ones([X.shape[0],1])
+            X_in = X
+        else:
+            N = X[...,-1] #shape [k,1]
+            X_in = X[...,:-1] #shape [k,1,1]
 
         # Compute the posterior of both noise and latent model
         posterior_f = self.model_f_posterior(
