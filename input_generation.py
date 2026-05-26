@@ -21,7 +21,6 @@ def main():
     ##Import arguments from the command line
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    # parser.add_argument("--outdir", required=True)
     args = parser.parse_args()
 
     with open(args.config,'r') as f:
@@ -89,9 +88,8 @@ def main():
         # train_x,train_n,train_y,train_sig2,test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
         train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
         init_rng[i] = test_class.get_rng_state()
-        ## Ouput Dataset D=(x,n,y,sigma2)
-
-
+        
+        #TODO Generate the datasets as seperate files to be loaded individually
 
     torch.save(train_x, outdir / f"train_x.pt")
     torch.save(train_n, outdir / f"train_n.pt")

@@ -97,8 +97,8 @@ class HeteroscedasticLatentGP(gpytorch.models.ApproximateGP):
         if covar_module is None:
             # lengthscale_prior = LogNormalPrior(loc=SQRT2 + log(1) * 0.5, scale=SQRT3)
             # covar_module = gpytorch.kernels.ScaleKernel(
-            #     gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents]),
-            #                                lengthscale_prior=lengthscale_prior),
+            #     gpytorch.kernels.RBFKernel(batch_shape=torch.Size([num_latents])),
+            #                             #    lengthscale_prior=lengthscale_prior),
             #                                batch_shape=torch.Size([num_latents]),).to(inducing_points)
 
             # covar_module = get_kernel_with_gamma_prior("matern",ard_num_dims=1,batch_shape=torch.Size([num_latents])).to(inducing_points)
@@ -192,7 +192,7 @@ class HeteroscedasticGaussianLikelihood(gpytorch.likelihoods.Likelihood):
         
         # Sum over datapoints -> (num_samples,)
         log_prob_sum = log_prob.sum(dim=-1)
-        print(f"[OUT] Expected Lhood:{torch.exp(log_prob_sum)}")
+        #print(f"[OUT] Expected Lhood:{torch.exp(log_prob_sum)}")
         # print(f"[OUT] g_mean :{g_mean[0]}")
         # print(f"[OUT] fvar :{sigma2_f[0]}")
         # print(f"[OUT] eps_inv :{sigma2_eps_inv[0]}")
@@ -282,6 +282,13 @@ class HeteroscedasticBOModel(GPyTorchModel):
                                              covar_module,
                                              mean_module)
 
+        #NOTE: Override with natural hyperparameters -troubleshooting
+        hypers_initial = {'covar_module.base_kernel.lengthscale':torch.tensor([0.12334756533686164,0.10384711650772956]),
+                          'covar_module.outputscale':torch.tensor([24.011818516121988,0.7121439016547025]),
+                          'mean_module.constant':torch.tensor([0.47323322676869, -0.16897252634352328])}
+        
+        ##Uncomment to initialise
+        # self.model.initialize(**hypers_initial)
         if likelihood is None:
             self.likelihood = HeteroscedasticGaussianLikelihood() 
         else:

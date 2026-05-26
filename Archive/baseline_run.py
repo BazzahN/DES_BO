@@ -72,7 +72,7 @@ model = SingleTaskGP(train_X=train_x,
                     #  train_Y=train_y,
                      train_Y=train_sigma_2,
                      train_Yvar= st.full_like(train_y,1e-16),
-                     covar_module= covar_modules[0],
+                     covar_module= covar_modules[1],
                      mean_module=mean_modules[0]
                      )
 mll = ExactMarginalLogLikelihood(model.likelihood,model)

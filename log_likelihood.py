@@ -48,6 +48,7 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--af_name",type=str,required=True)
     parser.add_argument("--macro",type=int,required=True)
+    parser.add_argument("--hypers",required=False) #Input Hyperparamaters if chosen
     args = parser.parse_args()
 
     with open(args.config) as f:
