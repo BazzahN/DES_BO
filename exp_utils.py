@@ -7,6 +7,7 @@ from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.acquisition import ExpectedImprovement
+from math import ceil
 TKWARGS = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
@@ -149,7 +150,8 @@ from HGP_utils import HeteroscedasticBOModel,HeteroscedasticELBO,fit_vihgp_elbo
 
 class VI_HGP():
 
-    def __init__(self,n_u, #Int: number of inducing points
+    def __init__(self,
+                 gamma, #Int: number of inducing points
                  iters, #Int: number of iterations
                  standardise=False,#bool: If true then standardise output
                  verbose=False,
@@ -159,7 +161,7 @@ class VI_HGP():
         Inputs
         
         """
-        self.n_u = n_u
+        self.gamma = gamma
         self.iters = iters
         self.standardise = standardise
         self.verbose = verbose
@@ -195,10 +197,10 @@ class VI_HGP():
         if self.standardise:
             train_y = out_transform.standardise_and_update(train_y)
 
-        #TODO If train_x has n > 1 for VIHGP then train_x will be quite large indeed which will result in identical inducing points being selected.  
-        #Obtain inital inducing points from a subset of train_x data. Therefore n_u < k
-        
-        inducing_init = train_x[torch.linspace(0, train_x.size(0) - 1, steps=self.n_u).long()]
+        #n_u= size of dataset * gamma
+        n_u = ceil(self.gamma*train_y.shape[0])
+
+        inducing_init = train_x[torch.linspace(0, train_x.size(0) - 1, steps=n_u).long()]
 
         #Fit main Model
         hgp_model = HeteroscedasticBOModel(train_x,
@@ -218,23 +220,7 @@ class VI_HGP():
         #NOTE: In contrast, to get stoch_kriging this just outputs a single class for the model and transformer
         return hgp_model, out_transform, hyperparamaters
 
-
-def get_k_inital_evals(k,n,target_function):
-    '''
-    Gets k inital observations for a flat n replications each  
-    '''
-    train_x = torch.linspace(0.1,1,k).reshape(k,1).to(**TKWARGS)
-    train_n = torch.ones_like(train_x) * n
-
-
-    #Generate y values from latent function plus heteroscedastic Gaussian noise
-    train_y, train_sigma2 = target_function.eval_target_noisy(train_x,train_n)
-
-    return train_x,train_n,train_y,train_sigma2
-
-
 from botorch.optim.optimize import optimize_acqf
-
 
 def optimise_acqf_get_candidate(acq_func, bounds,num_restarts=25,raw_samples=500):
     '''
@@ -332,29 +318,6 @@ from DES_acqfs import AEI_fq
 from botorch.acquisition import PosteriorMean,ExpectedImprovement
 
 
-#NOTE: Pretty sure this is depricated - remove once confirmed
-# class BODES_loop_initialiser:
-
-#     def __init__(self,
-#                  k,
-#                  n,
-#                  target_function_class):
-        
-#         self.k = k
-#         self.n = n
-#         self.target_function_class = target_function_class
-
-#     def initialise(self):
-
-#         train_x,train_n,train_y,train_sigma2 = get_k_inital_evals(self.k,
-#                                                                   self.n,
-#                                                                   self.target_function_class)
-
-#         model,output_handle = get_stoch_kriging_model(train_x,train_n,train_y,train_sigma2)
-
-#         return model,train_x,train_n,train_y,train_sigma2,output_handle
-
-#TODO: Note too self. In future use an abstract baseclass when using the same model three times
 class run_vanilla_exp_itr:
 
     def __init__(self,
@@ -426,7 +389,6 @@ class run_DES_exp_itr:
                  AF,
                  f_best_strat,
                  model_call_func,
-                #  target_function,
                  cost_function,
                  bounds,
                  GP="sk"):
@@ -563,6 +525,43 @@ class run_IG_exp_itr:
 
         return model,AF, train_x, train_n, train_y, train_sigma2,output_handle, hyperparamaters
 
+class run_IG_exp_simple(run_IG_exp_itr):
+    def __init__(self,n, AF, model_call_func, cost_function, bounds):
+        
+        super().__init__(n,
+                         AF=AF, 
+                         model_call_func=model_call_func, 
+                         cost_function=cost_function, 
+                         bounds=bounds, 
+                         GP = "vhgp")
+
+        self.n = n
+    def run_iter(self, model, train_x, train_n, train_y, train_sigma2, target_function, output_transform):
+        
+        #Initialise AF for candidate selection
+        AF = self.AF(model = model,
+                     cost_model=self.cost_function,
+                     output_transform= output_transform,
+                     hold_n= self.n,
+                     num_mv_samples = self.num_mv_samples,
+                     candidate_set = self.discrete_space,
+                     maximize=MAXIMIZE) #Define Cost aware and penalised EI
+
+        new_x,acq_val = candidate_acq(AF,self.bounds)
+        print(f"[OUT]ACQF VAL:{acq_val.item()}")
+        n = torch.tensor([self.n]).reshape(1,1)
+        new_x,new_y, new_sigma2 = target_function.eval_target_noisy(new_x,
+                                                                    n,
+                                                                    self.moments)
+        train_x = torch.cat([train_x,new_x])
+        train_n = torch.cat([train_n,n])
+        train_y = torch.cat([train_y,new_y])
+        train_sigma2 = torch.cat([train_sigma2,new_sigma2])
+
+        ## Re-condtion model
+        model,output_handle,hyperparamaters = self.model_call_func(train_x,train_n,train_y,train_sigma2)
+        
+        return model,AF, train_x, train_n, train_y, train_sigma2,output_handle, hyperparamaters
 
 
 def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
@@ -575,7 +574,6 @@ def get_best_f_AEI(model,output_transform,bounds,maximise=MAXIMIZE):
     _,f_best = f_best_acq(acq_strat_AEI,bounds=bounds[:,0].view(-1,1))
     return f_best
 
-#TODO: Modify for generality to allow HGP interface
 def get_best_f_SEI(model,bounds,maximise=MAXIMIZE,output_transform=None):
     """
     Docstring for get_best_f_SEI
@@ -825,6 +823,10 @@ IG = partial(run_IG_exp_itr,
             AF=BODES_IG,
             )
 
+IG_NOREP = partial(run_IG_exp_simple,
+                   AF=BODES_IG,
+                   )
+
 
 
 def GP_dial(gp_name,add_args):
@@ -836,7 +838,7 @@ def GP_dial(gp_name,add_args):
     
     if gp_name == "vihgp":
 
-        vi_hgp = VI_HGP(n_u=add_args['n_u'],
+        vi_hgp = VI_HGP(gamma=add_args['gamma'],
                         iters = add_args['iters'],
                         standardise=True,
                         verbose=True)
@@ -847,4 +849,5 @@ def GP_dial(gp_name,add_args):
 
 EXPERIMENTS = {'vanilla':VANILLA,
                'AEI': AEI,
-               'IG':IG}
+               'IG':IG,
+               'IG_norep':IG_NOREP}
