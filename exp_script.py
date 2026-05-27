@@ -143,7 +143,7 @@ def main():
         data = import_data(suffix=f"_m{m}")
         data['rng_state'] = rngs[m]
         out = run_experiment.run_T_BO_iters(T,**data)
-        run_experiment.save_output(out,outdir,m=f"_m{m}")    
+        run_experiment.save_output(out,outdir,m=m)    
         
     print(f'....Ending Experiment: {model}....\n')
     print(f'Results in {outdir}\n')
