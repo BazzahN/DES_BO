@@ -85,7 +85,7 @@ def main():
 
 
         train_x,train_n,train_y,train_sig2,test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
-        init_rng = test_class.get_rng_state()
+        init_rng[i] = test_class.get_rng_state()
         
         #TODO Generate the datasets as seperate files to be loaded individually
 

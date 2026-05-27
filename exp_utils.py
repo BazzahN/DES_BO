@@ -19,6 +19,21 @@ torch.manual_seed(seed)
 
 #GLOBALS
 MAXIMIZE= True #Sets problem to maximise test function or minimise test funciton
+def get_files(indir,file_names,suffix=None):
+    """
+    Extracts files from specified directory
+    """
+    data = {}
+	
+    for file_name in file_names:
+        if suffix is not None:
+            get_name = file_name + suffix
+        else:
+            get_name = file_name
+        load_in = torch.load(indir /  f"{get_name}.pt").to(**TKWARGS)
+        data[file_name] = load_in
+
+    return data
 
 class output_handler:
 
@@ -526,14 +541,14 @@ class run_IG_exp_itr:
         return model,AF, train_x, train_n, train_y, train_sigma2,output_handle, hyperparamaters
 
 class run_IG_exp_simple(run_IG_exp_itr):
-    def __init__(self,n, AF, model_call_func, cost_function, bounds):
+    def __init__(self,n, AF, model_call_func, cost_function, bounds,GP):
         
         super().__init__(n,
                          AF=AF, 
                          model_call_func=model_call_func, 
                          cost_function=cost_function, 
                          bounds=bounds, 
-                         GP = "vhgp")
+                         GP = GP)
 
         self.n = n
     def run_iter(self, model, train_x, train_n, train_y, train_sigma2, target_function, output_transform):
@@ -751,7 +766,7 @@ class experiment_handler:
             
         return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
     
-    def save_output(data,outdir,m):
+    def save_output(self,data,outdir,m):
         '''
         Class method to save iteration run output
         '''

@@ -4,6 +4,8 @@ import yaml
 from pathlib import Path
 import matplotlib.pyplot as plt
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel,Target_Function
+from functools import partial
+from exp_utils import get_files
 TKWARGS = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
@@ -16,44 +18,40 @@ def main():
     ##Import arguments from the command line
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    # parser.add_argument("--outdir", required=True)
+    parser.add_argument("--n_macros",type=int, required=True)
     args = parser.parse_args()
 
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    exp_name = config["experiment_name"]
-    study_args = config['study']
-    gen_args = config["problem"]
+    exp_name = args.config.split("/")[-1].removesuffix(".yml") #Creates experiment name from suffix
     misc_args = config["misc"]
-    exp_models = config["models"]
-    GP_arg = config["GP"]
+    #TODO Remove choice between sk and vhgp in problems
+    GP_arg = "vihgp"
     #Step 1: Import Arguments
     #Experimental Parameters
-    T = study_args['T'] #Number of iterations
-    M = study_args['M'] #Number of MacroReplications
-
+    M = args.n_macros #Number of MacroReplications
+    model = 'IG_norep'
 
     # Problem Constants
-    k= gen_args["k"] #Number of points
-    n= gen_args["n"] #Replications at each point
-    n_v = gen_args["n_v"] #Number of replications for vanilla
+    T = config["T"]
+    n_v = config["n_v"] #Number of replications for vanilla
 
-    x_min = gen_args["x_min"] 
-    x_max = gen_args["x_max"] #Domain bounds
+    x_min = 0
+    x_max = 1 #Domain bounds
 
-    n_min = gen_args["n_min"] 
-    n_max = gen_args["n_max"] #Sample bounds
+    # n_min = config["n_min"] 
+    # n_max = config["n_max"] #Sample bounds
 
-    test_function_id = gen_args["test_function_index"]
-    noise_function_id = gen_args["noise_function_index"] #Function dial in test_utils
+    test_function_id = config["test_function_index"]
+    noise_function_id = config["noise_function_index"] #Function dial in test_utils
 
-    phi = gen_args['phi']
-    tau = gen_args['tau'] #Additional Noise Function Paramaters
+    phi = config['phi']
+    tau = config['tau'] #Additional Noise Function Paramaters
 
 
-    b0 = gen_args['b0']  #Cost Function Paramaters 1/(b0+b1x)
-    b1 = gen_args['b1']
+    b0 = config['b0']  #Cost Function Paramaters 1/(b0+b1x)
+    b1 = config['b1']
     maximise = True
 
     # Misc Arguments
@@ -64,13 +62,12 @@ def main():
     #Import experiment input
 
     indir = Path(exp_name + "/Input")
-    data_in = {}
-    names = ['train_x','train_n','train_y','train_sigma2','rngs']
-
-    for name in names:
-
-        load_in = torch.load(indir /  f"{name}.pt")
-        data_in[name] = load_in.to(**TKWARGS)
+    rngs = torch.load(indir /  "rngs.pt")
+    
+    import_data = partial(get_files,
+                          indir = indir,
+                          file_names = ['train_x','train_n','train_y','train_sigma2'])
+    
     
     #Step 3: Initalise functions and methods
     ##Test problem and cost function
@@ -88,13 +85,17 @@ def main():
                              rng_state=torch.Generator().manual_seed(1).get_state()
                             )
 
-    bounds = torch.tensor([[x_min,n_min] * 1,
-                            [x_max,n_max] * 1],
+    # bounds = torch.tensor([[x_min,n_min] * 1,
+    #                         [x_max,n_max] * 1],
+    #                         dtype=torch.double,
+    #                         device=torch.device("cpu")) # Bounds of combined X and N space
+    #NOTE For test
+    bounds = torch.tensor([[x_min] * 1,
+                            [x_max] * 1],
                             dtype=torch.double,
                             device=torch.device("cpu")) # Bounds of combined X and N space
    
     #Step 4: Execute experiments
-    names_out = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
 
     outdir = Path(exp_name + "/Data")
     outdir.mkdir(parents=True,exist_ok=True)
@@ -107,43 +108,47 @@ def main():
             logdir.mkdir(parents=True,exist_ok=True)
 
    
-    for model in exp_models: 
+    
         ##Initalise experiment handling class
-        print(f'Starting Experiment: {model}....\n')
-        exp_object = EXPERIMENTS[model]
-        experiment = exp_object(n=n_v, #Assigns number of replications for vanilla. If not vanilla then dummy used
-                                cost_function=lin_cost_func,
-                                bounds=bounds,
-                                model_call_func=GP_dial(GP_arg,misc_args["vihgp"]),
-                                GP=GP_arg)
-        add_params = {"path":exp_name,
-                      "acqf_name":model,
-                      "n_grid":n_grid} #For storage of additional information
+    
+    exp_object = EXPERIMENTS[model]
+    experiment = exp_object(n=n_v, #Assigns number of replications for vanilla. If not vanilla then dummy used
+                            cost_function=lin_cost_func,
+                            bounds=bounds,
+                            model_call_func=GP_dial(GP_arg,misc_args["vihgp"]),
+                            GP=GP_arg)
+    add_params = {"path":exp_name,
+                  "acqf_name":model,
+                  "n_grid":n_grid} #For storage of additional information
         
-        #Automatically switch off troubleshoot if vanilla supplied
-        if model == "vanilla":
-            print("Troubleshooting tools doesn't support EI. Setting troubleshoot=False")
-            run_experiment = experiment_handler(target,
-                                                experiment,
-                                                troubleshoot=False,
-                                                additional_paramaters=add_params,
-                                                )
-        else:
-            run_experiment = experiment_handler(target,
-                                                experiment,
-                                                troubleshoot,
-                                                add_params
-                                                )
+    #Automatically switch off troubleshoot if vanilla supplied
+    if model == "vanilla":
+        print("Troubleshooting tools doesn't support EI. Setting troubleshoot=False")
+        run_experiment = experiment_handler(target,
+                                            experiment,
+                                            troubleshoot=False,
+                                            additional_paramaters=add_params,
+                                            )
+    else:
+        run_experiment = experiment_handler(target,
+                                            experiment,
+                                            troubleshoot,
+                                            add_params
+                                            )
+    
+    ##Run experiment
+    
+    for m in range(0,M):
+        print(f'[SIM]Starting macroreplication {m} of {M}....\n',flush=True)
+        data = import_data(suffix=f"_m{m}")
+        data['rng_state'] = rngs[m]
+        out = run_experiment.run_T_BO_iters(T,**data)
+        run_experiment.save_output(out,outdir,m=f"_m{m}")    
         
-        ##Run experiment
-        
-        out = run_experiment.run_MT_BO_macros(M,T,**data_in)
-        print(f'....Ending Experiment: {model}....\n')
-        print(f'Results in {outdir}\n')
-        #Save results as tensors
-        for name,d in zip(names_out,out):
-            torch.save(d,outdir /  f"{model}_{name}.pt")
-
+    print(f'....Ending Experiment: {model}....\n')
+    print(f'Results in {outdir}\n')
+    #Save results as tensors
+   
 
 if __name__ == "__main__":
     main()
