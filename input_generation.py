@@ -21,35 +21,31 @@ def main():
     ##Import arguments from the command line
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--n_macros",type=int, required=True)
     args = parser.parse_args()
 
     with open(args.config,'r') as f:
         config = yaml.safe_load(f)
 
-    exp_name = config["experiment_name"]
-    study_args = config['study']
-    gen_args = config["problem"]
+    exp_name = args.config.split("/")[-1].removesuffix(".yml") #Creates experiment name from suffix
     misc_args = config["misc"]
-    GP_arg = config["GP"]
     
     #How to generate data depending on GP used
-    
+    M = args.n_macros
     ##Arguments
-    M = study_args['M']
+    k= config["k"] #Number of points
+    n= config["n"] #Replications at each point
+    #NOTE Always [0,1] 
+    x_min = 0
+    x_max = 1
 
-    k= gen_args["k"] #Number of points
-    n= gen_args["n"] #Replications at each point
+    test_function_index = config["test_function_index"]
+    noise_function_index = config["noise_function_index"] #Function dial in test_utils
 
-    x_min = gen_args["x_min"] 
-    x_max = gen_args["x_max"] #Domain bounds
+    phi = config['phi']
+    tau = config['tau'] #Additional Noise Function Paramaters
 
-    test_function_index = gen_args["test_function_index"]
-    noise_function_index = gen_args["noise_function_index"] #Function dial in test_utils
-
-    phi = gen_args['phi']
-    tau = gen_args['tau'] #Additional Noise Function Paramaters
-
-    seed = gen_args['seed']
+    seed = config['seed']
 
     # Output test function output for later comparison against prediction grid
     n_grid = misc_args['n_grid']
@@ -63,17 +59,19 @@ def main():
     Generators = spawn_generators(seed,M)
 
     #Generate Correct data based on GP used
+    #NOTE Forced for now
+    GP_arg = "vhgp"
     if GP_arg == "sk":
         moments = 1
-        shape_tuple = (M,k,1)
+        shape_tuple = (k,1)
     else:
         moments = 0
-        shape_tuple =(M,n*k,1)
+        shape_tuple =(n*k,1)
 
     train_x = torch.empty(size=shape_tuple)
-    train_n = torch.empty(size=(M,k,1))
     train_y = torch.empty(size=shape_tuple)
-    train_sig2 = torch.empty(size=(M,k,1))
+    train_n = torch.empty(size=(k,1))
+    train_sig2 = torch.empty(size=(k,1))
     rng_smple = Generators[0].get_state().size()
     init_rng = torch.empty(size=(M,rng_smple[0]))
 
@@ -85,16 +83,17 @@ def main():
                                     tau=tau,
                                     rng_state=rng.get_state())
 
-        # train_x,train_n,train_y,train_sig2,test_class = get_k_inital_evals(k,n,test_class,x_min,x_max)
-        train_x[i],train_n[i],train_y[i],train_sig2[i],test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
-        init_rng[i] = test_class.get_rng_state()
+
+        train_x,train_n,train_y,train_sig2,test_class = get_nxk_inital_evals(k,n,test_class,x_min,x_max,moments=moments)
+        init_rng = test_class.get_rng_state()
         
         #TODO Generate the datasets as seperate files to be loaded individually
 
-    torch.save(train_x, outdir / f"train_x.pt")
-    torch.save(train_n, outdir / f"train_n.pt")
-    torch.save(train_y, outdir / f"train_y.pt")
-    torch.save(train_sig2, outdir / f"train_sigma2.pt")
+        torch.save(train_x, outdir / f"train_x_m{i}.pt")
+        torch.save(train_n, outdir / f"train_n_m{i}.pt")
+        torch.save(train_y, outdir / f"train_y_m{i}.pt")
+        torch.save(train_sig2, outdir / f"train_sigma2_m{i}.pt")
+    
     torch.save(init_rng,outdir / f"rngs.pt")
 
     test_x,test_y,test_sigma2  = test_class.eval_target_true_grid(n_grid,x_min,x_max)
@@ -105,12 +104,12 @@ def main():
 
     #Obtain max value
     #TODO Change this so it gives the maximiser instead
-    try:
-        res = config['optim']
-    except:
-        config['optim'] = test_y.max().item()
-        with open(args.config,'w') as f:
-            yaml.safe_dump(config,f)
+    # try:
+    #     res = config['optim']
+    # except:
+    #     config['optim'] = test_y.max().item()
+    #     with open(args.config,'w') as f:
+    #         yaml.safe_dump(config,f)
 
 
 

@@ -602,6 +602,29 @@ def get_best_f_SEI(model,bounds,maximise=MAXIMIZE,output_transform=None):
         return x_best,f_best
     
 
+def _tensor_export_helper(data,names,outdir,m=None):
+   
+    """
+    Used for exportinng a tuple of data to a lise given its supplied names
+
+    Inputs
+    ------
+        data: tuple
+        Tuple of Tensors
+        names: list
+            List of data object names in the tuple
+        outdir: location of saved data
+        m: int
+            Macroreplication number
+
+    """
+    suffix=""
+    if m is not None:
+        suffix=f"_m{m}"
+    for name,d in zip(names,data):
+        f_name = f"{name}" + suffix + ".pt"   
+        torch.save(d,outdir /  f_name)
+
 class experiment_handler:
 
     def __init__(self, 
@@ -707,6 +730,7 @@ class experiment_handler:
                                 #    hyperparamaters=hyperparamaters,
                                 )
 
+                #TODO No multiple replication version
                 acqf_plotter(n_grid=self.additional_paramaters['n_grid'],
                              acq_func=AF,
                              acqf_name=self.additional_paramaters['acqf_name'],
@@ -727,6 +751,13 @@ class experiment_handler:
             
         return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
     
+    def save_output(data,outdir,m):
+        '''
+        Class method to save iteration run output
+        '''
+        names = ['train_x','train_n','train_y','train_sigma2','x_strs','f_strs']
+        _tensor_export_helper(data,names,outdir,m)
+
     def run_MT_BO_macros(self,M,
                               T,
                               train_x,
@@ -748,11 +779,11 @@ class experiment_handler:
             #Update m for every macroreplications
             self.m = m
             out_x,out_n,out_y,out_sigma2,x_str,f_str =self.run_T_BO_iters(T,
-                                                                                  train_x[m],
-                                                                                  train_n[m],
-                                                                                  train_y[m],
-                                                                                  train_sigma2[m],
-                                                                                  rngs[m])
+                                                                          train_x[m],
+                                                                          train_n[m],
+                                                                          train_y[m],
+                                                                          train_sigma2[m],
+                                                                          rngs[m])
 
             #Append all data to lists
            
