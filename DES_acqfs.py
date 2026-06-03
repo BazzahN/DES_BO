@@ -287,7 +287,7 @@ class BODES_IG(MaxValueBase):
         cost_model, #Linear Cost Model
         output_transform, #Unstandardise GP output
         candidate_set: Tensor,
-        num_mv_samples: int = 10,
+        num_mv_samples: int = 50,
         hold_n: int | None = None,
         posterior_transform: PosteriorTransform | None = None,
         use_gumbel: bool = True,

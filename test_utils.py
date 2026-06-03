@@ -60,13 +60,24 @@ def test_function_2(x):
 
     return torch.sin(x_in) + torch.cos(x_in*10/3) 
 
-# def test_function_2(x):
-#     '''
-#     Simple optimisation problem to avoid edge problems for DES_BO:
-#     f(x) = sin4\pi*x + x
-#     '''
+def test_function_3(x):
+    '''
+    Another test problem, this was in from the HetGP paper:
+        f(x) = 2(\exp(-30(x-0.25)^2)+\sin(\pi x^2)) - 2
+    domain is x \in [0,1]
 
-#     return torch.sin(4*np.pi*x) + x
+    Inputs
+    ------
+    x:Tensor
+        The test/train locations for the GP
+    Returns
+    -------
+    f: Float
+        Evaluation of the test function
+    '''
+
+
+    return 2*(torch.exp(-30*(x-0.25)**2)+torch.sin(np.pi*x**2)) -2
 
 
 def noise_function_1(x,phi=0,tau=1):
@@ -131,6 +142,21 @@ def noise_function_3(x,phi=0,tau=1):
         Scale of the heteroscedastic noise function
     '''
     return tau *torch.ones_like(x)
+
+def noise_function_4(x,phi=0,tau=1):
+    '''
+    Plots the underlying heteroscedastic noise surface for the test problem,
+    this one is adapted from the HetGP paper:
+    \sigma_eps^2(x) = \frac{1}{3}\exp(\sin(2\pi x))^2
+
+    Inputs
+    ------
+    x: tensor
+        The test/train locations for the GP. Here x \in [0,1]
+    sigma_0: float
+        Scale of the heteroscedastic noise function
+    '''
+    return 1/3 * torch.exp(torch.sin(2*np.pi*x))**2
 
 from botorch.models.deterministic import DeterministicModel
 
@@ -329,11 +355,13 @@ have to be determined. IT is quite easy to do this but modifications are needed:
 '''
 
 TEST_FUNCTION_DIAL = [test_function_1,
-                      test_function_2]
+                      test_function_2,
+                      test_function_3]
 
 NOISE_FUNCTION_DIAL =[noise_function_1,
                       noise_function_2,
-                      noise_function_3]
+                      noise_function_3,
+                      noise_function_4]
 
 '''
 Store test function names to be used in report writing.
@@ -342,7 +370,9 @@ or remove any.
 '''
 
 TEST_FUNCTION_NAMES = ["f(x) = \\sin(5x) + \\cos(7x)",
-                       "f(x) = \\sin(x) + \\cos(\\frac{{10}}{{3}}x)"]
+                       "f(x) = \\sin(x) + \\cos(\\frac{{10}}{{3}}x)",
+                       "f(x)=2(\\exp(-30(x-0.25)^2) + \\sin(\\pi x^2)) - 2"]
 NOISE_FUNCTION_NAMES =["\\sigma^2_{\\varepsilon}(x) = (0.3 + \\tau\\exp(-0.5((x - \\phi)/0.1)^2))^2",
                         "\\sigma^2_{\\varepsilon}(x) = \\tau^2",
-                        "\\sigma^2_{\\varepsilon}(x) = |\\tau^2 \\times f(x)|"]
+                        "\\sigma^2_{\\varepsilon}(x) = |\\tau^2 \\times f(x)|",
+                        "\\sigma^2_{\\varepsilon}(x) = \\frac{1}{3}\\exp(\\sin(2\\pi x))^2"]

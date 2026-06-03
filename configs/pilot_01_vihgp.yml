@@ -5,7 +5,7 @@ misc:
   n_grid: 200
   vihgp:
     iters: 800
-    n_u: 10
+    n_u: 25
 models:
 - IG
 - AEI
@@ -13,7 +13,7 @@ optim: 1.2443101894404267
 problem:
   b0: 1
   b1: 0.5
-  k: 50
+  k: 25
   n: 2
   n_v: 5
   n_max: 100

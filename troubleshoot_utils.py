@@ -4,8 +4,8 @@ import torch as st
 import json
 import matplotlib.pyplot as plt
 
-DPI = 500
-FIGSIZE = (8,12) #Global figsize for variable
+DPI = 300
+FIGSIZE = (12,8) #Global figsize for variable
 LOG_FNAME = "/Log"
 
 TKWARGS = {
@@ -407,14 +407,17 @@ def acqf_plot(grid_xn,
 
     # Initialize plot
     plt.figure(figsize=FIGSIZE)
-    
-    #Get grids
-    grid_x = grid_xn['x']
-    grid_xn = grid_xn['xn']
-    n_vals = grid_xn[...,1].unique()
-    with st.no_grad():
-        for i, n in enumerate(n_vals):
-            plt.plot(grid_x,acq_vals[i],label=f"n={n}")
+    if isinstance(grid_xn,dict):
+        #Get grids
+        grid_x = grid_xn['x']
+        grid_xn = grid_xn['xn']
+        n_vals = grid_xn[...,1].unique()
+        with st.no_grad():
+            for i, n in enumerate(n_vals):
+                plt.plot(grid_x,acq_vals[i],label=f"n={n}")
+    else:
+        with st.no_grad():
+            plt.plot(grid_xn,acq_vals,label="AF")
 
     plt.xlabel('$x$')
     plt.ylabel('$AF(x)$')
@@ -432,13 +435,20 @@ def acqf_plotter(n_grid,
                  acqf_name,
                  path,
                  run_params=None,
-                 replications=st.tensor([1,5,10])):
+                 replications=st.tensor([1,5,10])
+                #  replications=None
+                 ):
 
     #Generate Grid
     grid_xn = input_generator(n_grid,replications=replications)
     
     #Obtain acqf values
-    acq_vals = acq_func(grid_xn['xn'].unsqueeze(1))
+    if replications is not None:
+        acq_vals = acq_func(grid_xn['xn'].unsqueeze(1))
+        acq_vals = acq_vals.reshape(replications.shape[0],n_grid)
+    else:
+        acq_vals = acq_func(grid_xn.unsqueeze(1))
+
     plot_title = "acq vals"
 
     if run_params is not None:
@@ -451,7 +461,7 @@ def acqf_plotter(n_grid,
 
     #Plot and save acq fig
     acqf_plot(grid_xn=grid_xn,
-              acq_vals=acq_vals.reshape(replications.shape[0],n_grid),
+              acq_vals=acq_vals,
               path=outdir,
               f_name = f_name,
               plot_title=plot_title

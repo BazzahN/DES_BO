@@ -1,0 +1,18 @@
+misc:
+  n_grid: 200
+  troubleshoot: False
+  vihgp:
+    iters: 800
+    gamma: 0.4
+seed: 12345
+T: 15 
+k: 15
+n: 2
+n_v: 2
+noise_function_index: 0
+test_function_index: 1
+phi: 0.4
+tau: 0.7
+b0: 1
+b1: 0.5
+AF: "IG"

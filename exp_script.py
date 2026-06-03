@@ -31,8 +31,7 @@ def main():
     #Step 1: Import Arguments
     #Experimental Parameters
     M = args.n_macros #Number of MacroReplications
-    model = 'IG_norep'
-
+    model = config["AF"]
     # Problem Constants
     T = config["T"]
     n_v = config["n_v"] #Number of replications for vanilla
@@ -40,8 +39,8 @@ def main():
     x_min = 0
     x_max = 1 #Domain bounds
 
-    # n_min = config["n_min"] 
-    # n_max = config["n_max"] #Sample bounds
+    n_min = 1
+    n_max = 20
 
     test_function_id = config["test_function_index"]
     noise_function_id = config["noise_function_index"] #Function dial in test_utils
@@ -85,15 +84,16 @@ def main():
                              rng_state=torch.Generator().manual_seed(1).get_state()
                             )
 
-    # bounds = torch.tensor([[x_min,n_min] * 1,
-    #                         [x_max,n_max] * 1],
-    #                         dtype=torch.double,
-    #                         device=torch.device("cpu")) # Bounds of combined X and N space
-    #NOTE For test
-    bounds = torch.tensor([[x_min] * 1,
-                            [x_max] * 1],
-                            dtype=torch.double,
-                            device=torch.device("cpu")) # Bounds of combined X and N space
+    if model == "IG":
+        bounds = torch.tensor([[x_min,n_min] * 1,
+                                [x_max,n_max] * 1],
+                                dtype=torch.double,
+                                device=torch.device("cpu")) # Bounds of combined X and N space
+    else: 
+        bounds = torch.tensor([[x_min] * 1,
+                                [x_max] * 1],
+                                dtype=torch.double,
+                                device=torch.device("cpu")) # Bounds of combined X and N space
    
     #Step 4: Execute experiments
 
@@ -141,7 +141,10 @@ def main():
     for m in range(0,M):
         print(f'[SIM]Starting macroreplication {m} of {M}....\n',flush=True)
         data = import_data(suffix=f"_m{m}")
+        #Change internal m
         data['rng_state'] = rngs[m]
+        run_experiment.m = m
+        
         out = run_experiment.run_T_BO_iters(T,**data)
         run_experiment.save_output(out,outdir,m=m)    
         

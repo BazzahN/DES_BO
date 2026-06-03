@@ -1,0 +1,46 @@
+---
+title: "Bayesian Optimisation with Replication Selection for Stochastic Simulation Optimisation"
+author: "Harry Newton"
+format: 
+  beamer:
+    include-in-header:
+    - file: mycommands.sty
+---
+# Introduction
+
+## Stochastic Simulation
+
+## Bayesian Optimisation (BO)
+
+## Elements of BO
+
+# Our Approach
+
+## Heteroscedastic Gaussian process
+Observations from the simulation are described using by a Gaussian Process:
+$$
+y(x) \sim \GP(f(x),\sepssq(x))
+$$
+"COMMENT: Make equation below double column or something"   
+$$
+f(x) \sim \GP(\mu_f,k_f(x,x'))
+$$
+
+$$
+\sepsq(x)=\phi(g(x))
+$$
+
+
+$$
+g(x) \sim \GP(\mu_g,k_g(x,x'))
+$$
+
+$\mu_{(\cdot)}$ is the prior mean function; it's usually constant
+$k_{(\cdot)}(x,x)$ is the kernel function.
+$\phi(x)$ is a link function to enforce positive noise. We choose $\log$, but *softplus* also works. 
+
+## Replication and cost aware Acquisition Function
+
+# Simulation Study
+
+## Test Problem
