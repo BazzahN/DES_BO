@@ -1,46 +1,349 @@
 ---
 title: "Bayesian Optimisation with Replication Selection for Stochastic Simulation Optimisation"
-author: "Harry Newton"
+author: 
+  - "Harry Newton"
+  - "Luke Rhodes-Leader, James Grant, David Leslie"
+bibliography: local-bib.bib
 format: 
   beamer:
+    section-titles: false
     include-in-header:
-    - file: mycommands.sty
+    - file: mycommands.sty 
+    - text: \usepackage{tikz}
+            \usetikzlibrary{arrows.meta, positioning, calc}
+header-includes:
+- \titlegraphic{\includegraphics[width=4cm]{fig/logo.png}}
 ---
 # Introduction
 
 ## Stochastic Simulation
 
+:::: {.columns align=center}
+
+::: {.column width="50%"}
+Stochastic simulation is used in the modelling and optimisation for a number of complicated problems:
+
+- Hospital treatment pathways 
+- Inventory management
+- Supply chain optimisation
+- And many more.... 
+:::
+
+::: {.column width="50%"}
+![](fig/DES%20illustration.png)
+:::
+
+::::
+
+## Stochastic Simulation
+
+Evaluations of a simulation at a given decision $x$ are noisy samples of the true performance $f(x)$.
+
+$$
+y(x) = f(x) + \varepsilon, \quad \varepsilon \sim N(0,\sepssq)
+$$
+
+Therefore we usually take $n$ replications at each decision for a better estimate of $f(x)$
+
+$$
+\bar{f}(x) \sim N \left(f(x),\frac{\sepssq}{n}\right)
+$$
+
+## Optimisation
+
+We view stochastic simulation optimisation within the context of a black-box optimisation problem:
+
+$$
+f^{*}(x) = \max_{x \in X} \E[y(x)]
+$$
+
+## Heteroscedastic Noise
+
+In the general case, the noise variance $\sepssq \rightarrow \sepssq(x)$ is not constant across the decision space. This is known as *heteroscedastic* noise.
+
+Consider the MM1 for example with arrival rate $\lambda$ and service rate $\mu$.
+
+![](fig/Queue.png){width=70% fig-align="center"}
+
+- As $\lambda \rightarrow \mu$, the system is unstable and the noise variance is very high.
+- When $\lambda << \mu$, the system is stable and the noise variance is low. 
+
+# Bayesian Optimisation
+
 ## Bayesian Optimisation (BO)
 
-## Elements of BO
+Bayesian Optimisation (BO) performs global optimisation using informed decisions to explore $\X$. 
 
+BO is built upon the foundations of its two main components:
+
+- **Surrogate Model** - The algorithm's present knowlege about the unkown objective; used to predict **mean** and **uncertainty** values of unobserved points. Usually a Gaussian Process
+- **Acquisition Function** (AF) - How BO evaluates the utility of any $x \in \X$ in its effort to find $f^*$
+
+## Bayesian Optimisation (BO)
+
+```{=latex}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    box/.style={rounded corners=6pt, minimum width=4.2cm, minimum height=1.6cm, align=center, text width=4.2cm},
+    gp/.style={box, fill=teal!60!black, text=white},
+    acq/.style={box, fill=teal!70!black, text=white},
+    des/.style={box, fill=pink!70!red, text=white},
+    arrow/.style={-Latex, line width=1.2pt, draw=blue!50!black}
+]
+
+% Nodes
+\node[gp] (gp) {Gaussian Process\\
+$y(x)\mid \mathcal{D}_t \sim \mathcal{N}(\hat f(x), \sigma_f^2)$};
+
+\node[acq, right=4.2cm of gp] (acq) {Acquisition Function\\
+$\arg\max_{x \in \X}\ \alpha(x)$};
+
+\node[des, below=3.2cm of $(gp)!0.5!(acq)$] (des) {Simulation};
+
+% GP -> Acquisition (straight, clean)
+\draw[arrow] (gp) -- (acq);
+
+% Acquisition -> DES (controlled curve)
+\draw[arrow]
+    (acq.south) .. controls +(0,-2.2) and +(2,1.5) ..
+    node[midway, right] {$x_{t+1}$}
+    (des.east);
+
+% DES -> GP (controlled curve, symmetric)
+\draw[arrow]
+    (des.west) .. controls +(-2,1.5) and +(0,-2.2) ..
+    node[midway, left] {$\mathcal{D}_{t+1} = \mathcal{D}_t \cup (x_{t+1},y_{t+1})$}
+    (gp.south);
+
+\end{tikzpicture}%
+}
+```
+
+<!--
+## Bayesian Optimisation (BO)
+
+Useful in contexts where 
+- $\text{Cost of evaluating simulation} > \text{Fitting the Surrogate Model}$
+-->
 # Our Approach
 
-## Heteroscedastic Gaussian process
-Observations from the simulation are described using by a Gaussian Process:
+## BO with replication selection
+
+**Aim:** Tailor a BO algorithm toward stochastic simulation optimisation, by considering heteroscedastic noise in the GP and including, as an additional decision, the number of replications at which to sample a point. 
+
+## Heteroscedastic Gaussian Process
+
+Observations from the simulation are modelled with a Gaussian Process (GP)[@lazaro-gredillaVariationalHeteroscedasticGaussian2011]:
 $$
 y(x) \sim \GP(f(x),\sepssq(x))
 $$
-"COMMENT: Make equation below double column or something"   
+
 $$
-f(x) \sim \GP(\mu_f,k_f(x,x'))
+f(x) \sim \GP (\mu_f,k_f(x,x')), \quad g(x) \sim \GP(\mu_g,k_g(x,x'))
 $$
 
 $$
-\sepsq(x)=\phi(g(x))
+\sepssq(x) = \phi \left( g(x) \right)
 $$
 
+| $\mu_{(\cdot)}$ is the prior mean function; it's usually constant 
+| $k_{(\cdot)}(x,x)$ is the kernel function
+| $\phi(x)$ is a link function to enforce positive noise
+
+
+<!--
+## Inference on Heteroscedastic Gaussian Process
+## Replication Aware Acquisition Function
+Our AF is based upon "TODO: CITE GIBBON", which uses a principle from information theory called *mutual information* to define the *information gain* $IG(y;f^*)$. 
+
+"Quantifying how much observing $y$ will decrease the uncertainty I have about $f^*$"
+
+-->
+## Replication Aware Acquisition Function
+
+Our AF is based upon [@mossGIBBONGeneralpurposeInformationBased2021], which is a lower bound on the max-entropy search. 
+
+. . .
+
+<!--
+```{=latex}
+\[
+\resizebox{\textwidth}{!}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} c(n) \sum_{i=1}^{l}\log\Bigg(1-\frac{n\sigma^2_f(x)}{\sigma_{\varepsilon}^2(x) + n\sigma_f^2(x)}\, Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]\Bigg)
+$}
+\]
+```
+-->
+```{=latex}
+\[
+\scalebox{0.85}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} c(n) \sum_{i=1}^{l}\log\Bigg(1-\frac{n\sigma^2_f(x)}{\sigma_{\varepsilon}^2(x) + n\sigma_f^2(x)}\, Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]\Bigg)
+$}
+\]
+```
 
 $$
-g(x) \sim \GP(\mu_g,k_g(x,x'))
+x_{t+1},n_{t+1} = \argmax_{x\in \X \ n \in \N} \alpha(x,n)
+$$
+<!--
+Joint Optimisation over both domains, we treat n as continuous by rounding it up
+-->
+
+## Inverse Cost
+
+```{=latex}
+\[
+\resizebox{\textwidth}{!}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} \hl{c(n)} \sum_{i=1}^{l}\log\Bigg(1-\frac{n\sigma^2_f(x)}{\sigma_{\varepsilon}^2(x) + n\sigma_f^2(x)}\, Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]\Bigg)
+$}
+\]
+```
+$$
+c(n) = \frac{1}{\beta_0+\beta_1 n}
 $$
 
-$\mu_{(\cdot)}$ is the prior mean function; it's usually constant
-$k_{(\cdot)}(x,x)$ is the kernel function.
-$\phi(x)$ is a link function to enforce positive noise. We choose $\log$, but *softplus* also works. 
+$\beta_0$ is the base cost of running the simulation
 
-## Replication and cost aware Acquisition Function
+
+$\beta_1$ is the per replication cost
+
+## Noise Penalty
+
+```{=latex}
+\[
+\resizebox{\textwidth}{!}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} c(n) \sum_{i=1}^{l}\log\Bigg(1-\hl{\frac{n\sfunsq(x)}{\hsepssq(x) + n\sfunsq(x)}}\, Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]\Bigg)
+$}
+\]
+```
+|$\hsepssq(x)$ is the predicted *aleatoric uncertainty*
+|$\sfunsq(x)$ is the GP's *epistemic uncertainty*
+
+## $f^*$ Improvement term
+
+```{=latex}
+\[
+\resizebox{\textwidth}{!}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} c(n) \sum_{i=1}^{l}\log\Bigg(1-\frac{n\sfunsq(x)}{\hsepssq(x) + n\sfunsq(x)}\, \hl{Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]}\Bigg)
+$}
+\]
+```
+$$
+\gamma(x,f_i^*) = \frac{f_i^* - \hat{f}(x)}{\sfunsq(x)}
+$$
+
+$$
+Z(x,f_i^*) = \frac{\Phi(\gamma(x,f_i^*))}{\Psi(\gamma(x,f_i^*))}
+$$
+
+| $\hat{f}(x)$ is the predicted mean at $x$ 
+| $\Phi$ is the standard normal pdf
+| $\Psi$ is the standard normal cdf
+
+## Approximation
+
+```{=latex}
+\[
+\resizebox{\textwidth}{!}{$
+\alpha_{\mathrm{IG}}(x,n) = - \frac{1}{2l} c(n) \hl{\sum_{i=1}^{l}}\log\Bigg(1-\frac{n\sfunsq(x)}{\hsepssq(x) + n\sfunsq(x)}\, Z(x,f^{*}_i)\Bigg[\gamma(x,f_i^*) + Z(x,f_i^*)\Bigg]\Bigg)
+$}
+\]
+```
+$$
+f^* \sim \text{Gumbel}(a,b)
+$$
+
+Where $a$ and $b$ are paramaters which best fit GP predictions at a subset of locations within the dataset $\D$
 
 # Simulation Study
 
 ## Test Problem
+
+![](fig/test_problem.png)
+
+Problem also used in [@binoisHetGPHeteroskedasticGaussian2021]
+
+## Experiment parameters
+
+| Parameter | Value | 
+|---------|---------|
+| $k$    | 10 |
+| $n_{\text{init}}$   | 2 |
+| $M$ | 50|
+
+: Experment parameters
+
+
+| Parameter | Value | 
+|---------|---------|
+| $\beta_0$    | 1 |
+| $\beta_1$    | 0.5 |
+
+: Cost function parameters
+
+- $\D_{init}$ is composed of $B_{init}=k\times n_{init}$, at $k$ evenly space unique locations, each with $n_init$ replicates.
+- The results are calculated from running BO over $M$ unique seeds
+
+## Comparison
+
+| Name | GP | AF | Iterations |  
+|---------|---------|---------|---------|
+| $IG_{reps}$ | HGP | $\alpha(x,n)$ | $T=25$
+| $IG$ | HGP | $\alpha(x,n=2)$ | $T=80$
+
+## Performance
+
+Efficiency 
+: A method's proximity to the true optimal solution given the total cummulative cost of the simulation queries it spent to reach that point. 
+
+
+True optimal solution 
+: The noiseless output of the true test function $f(x_t^*)$ evaluated at the predicted maximiser $x_t^* = \argmax_{x \in \X} \hat{f}(x)$
+
+## Results (Cumulative Cost)
+
+![](fig/comp_plot.png)
+
+## Results (Cumulative Replications)
+
+![](fig/comp_plot_n.png)
+
+
+## Local Optima
+
+![](fig/candidate_selection_10.png)
+
+## Why?
+
+$$
+\frac{n\sfunsq(x)}{\sepssq(x) + n\sfunsq(x)}
+$$
+
+- Preference to explore areas with high $\sfunsq(x)$ and low $\hsepssq(x)$
+- Increasing $n$ improves the value of high $\hsepssq(x)$ areas by inflating $\sfunsq(x)$.
+
+<!--
+Contrary behaviour occurs
+--> 
+## Over Exploitation
+
+![](fig/IG_acqf_0_13.png)
+
+## Fixes?
+
+- Don't jointly optimise over both $x$ and $n$. Optimise $x$ first, then make the replication decision
+- Change how the penalty term is parameterised to reduce the gap between aleatoric and epistemic uncertainty
+
+---
+
+```{=latex}
+
+\centering
+\Huge Questions?
+
+```
+## References {shrink=5}
+
+::: {#refs}
+:::

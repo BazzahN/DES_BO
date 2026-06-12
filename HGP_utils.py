@@ -168,22 +168,6 @@ class HeteroscedasticGaussianLikelihood(gpytorch.likelihoods.Likelihood):
 
         target = target.squeeze(-1)
 
-        # Compute noise per-sample (positive)
-        #noise_var = torch.exp(g_samps)  # (num_samples, n)
-
-        # residuals
-        # target shape might be (n,) -> expand to (num_samples, n)
-        # if target.dim() == 1:
-        #     target_exp = target.unsqueeze(0).expand(num_samples, -1)
-        # else:
-        #     # fallback: allow batched targets (num_targets, n) - but keep simple here
-        #     target_exp = target
-
-        # res = target_exp - f_samps  # (num_samples, n)
-
-        # Normal log-prob per datapoint per sample
-        # log p = -0.5 * (log(2*pi*noise) + res^2 / noise)
-
         sigma2_eps_inv = torch.exp(-g_mean + 0.5*g_var)
 
         sqr_term = (target - f_mean) ** 2
@@ -282,13 +266,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
                                              covar_module,
                                              mean_module)
 
-        #NOTE: Override with natural hyperparameters -troubleshooting
-        hypers_initial = {'covar_module.base_kernel.lengthscale':torch.tensor([0.12334756533686164,0.10384711650772956]),
-                          'covar_module.outputscale':torch.tensor([24.011818516121988,0.7121439016547025]),
-                          'mean_module.constant':torch.tensor([0.47323322676869, -0.16897252634352328])}
-        
-        ##Uncomment to initialise
-        # self.model.initialize(**hypers_initial)
+        x
         if likelihood is None:
             self.likelihood = HeteroscedasticGaussianLikelihood() 
         else:

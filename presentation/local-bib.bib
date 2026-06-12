@@ -1,0 +1,178 @@
+@article{ankenmanStochasticKrigingSimulation2010,
+  title = {Stochastic {{Kriging}} for {{Simulation Metamodeling}}},
+  author = {Ankenman, Bruce and Nelson, Barry L. and Staum, Jeremy},
+  date = {2010},
+  journaltitle = {Operations Research},
+  volume = {58},
+  number = {2},
+  pages = {371--382},
+  doi = {10.1287/opre.1090.0754},
+  url = {https://doi.org/10.1287/opre.1090.0754},
+  abstract = {We extend the basic theory of kriging, as applied to the design and analysis of deterministic computer experiments, to the stochastic simulation setting. Our goal is to provide flexible, interpolation-based metamodels of simulation output performance measures as functions of the controllable design or decision variables, or uncontrollable environmental variables. To accomplish this, we characterize both the intrinsic uncertainty inherent in a stochastic simulation and the extrinsic uncertainty about the unknown response surface. We use tractable examples to demonstrate why it is critical to characterize both types of uncertainty, derive general results for experiment design and analysis, and present a numerical example that illustrates the stochastic kriging method.},
+  note = {Looks like heteroscedatic GPs have been explored a long time ago.
+\par
+The formulation of Hetero GPS - known here as stochastic kriging - can be found in this paper
+\par
+Look at that we see Barry Nelson here too
+\par
+Defines and uses the term intrinsic noise - a term I think we should adopt within our own vocabulary. We should use it in leui of “observational noise” 
+\par
+Adapted from some old DACE (design and analysis of deterministic computer experiments)
+\par
+Claim is made here that fully accounting for sampling variability has an impact on experiment design response-surface estimation and inference. What, specifically this impact is? Well we will find out. 
+\par
+Addendum: Turns out, this paper, like a lot of things, has been staring me in the face this entire time. It was included as reference in the original briefing for this document. 
+\par
+NOTE: The paragraphs I have highlighted in red are quite useful for other things in the project. Red1: Variables of interest for a automobile manufacturing setup. Red2: Discussion and references on the use of metamodels in simulation design. Red3: Comparison of GPs against linear regressions and their shortcomings. Red4: Neural Networks, at this time, had issues with overfitting. A gaussian process can be considered a general interpolator. Red5: Common Random Numbers Explanation
+\par
+Term: Domain Knowledge: knowledge held by an expert. We lack domain knowledge in our DES queuing systems and so may not have full knowledge of these classic nonlinear models 
+\par
+Further Relevance look to pg 374:
+\par
+NOTE: 
+\par
+Go back to your calculations re the MTGP for a two point, two fidelity problem and try and apply the same logic here. 
+\par
+Here it suggests that M=10 is good guidance for initial point allocation 
+\par
+Application of kriging/GPR to stochastic simulation settings. 
+\par
+Two sources of uncertainty:
+\par
+-Unobserved points that are predicted by the GP, they define this as extrinsic uncertainty. Extrinsic because it is an uncertainty which results from the model itself, not from the system. 
+\par
+-The stochastic simulation’s intrinsic stochastic noise. This is intrinsic as it arises from the simulation itself, not from the observational noise. 
+\par
+-Observational noise would be of a different character, and, to be honest. I think in my context the adoption of the term observational noise is probably inapropriate. We are mainly dealing with stochastic simulations, so the noise comes from the simulation itself, not from its observations. 
+\par
+I think this paper also provides us with quite a useful comparison of GPs with other ML methods and further motivates their usefulness. 
+\par
+Paper also contributes a means of simultaneously modelling ~the discrepency component M, and the variance on intrinsic noise.
+\par
+Experimental design-that of a classic sim op where choice is to be made on repeat replications and the point at which these repeats are taken 
+\par
+Yellow two: describes how predictions are made
+\par
+Here they show us a Mean Squared Estimator of a quantity. Remember this is not equivilant to the variance. The variance is another quantity which describes the variability of a random variable. The bias is how far an estimator is from the real thing, the real value. 
+\par
+The nugget effect, as mentioned in yellow 2 is characterised by a translation of the variogram -a function which describes the change in correlation as a function of distance from any point. 
+\par
+intrinsic noise dependence in noise between points is characterised via a rho quantity. with CRN rho {$>$} 1
+\par
+Important quatnties:
+\par
+r\_ii - extrinsic correlations between points x\_i and x\_j
+\par
+r\_0 - extrinsic correlation between new point x\_. and previous design points
+\par
+tau - extrinisc variance of M. This is the noise imposed by the statistical model itself.
+\par
+rho - the intrinsic dependence between points 
+\par
+V - Common variance across design points/n. 
+\par
+n - total number of replications n=n1=n2, as n1 may be calculated from a different number of replications - it is a desing variable after all. 
+\par
+THOUGHTS:
+\par
+Funny and embarassing story: This paper is one that I rediscovered recently, but it was actually part of the references for my PhD project. I WISH I WOULD HAVE READ IT EARLIER
+\par
+Paper is framed within stoch sim context and actually is quite good at providing some additional motivators for CRN and the need for stochastic kriging. 
+\par
+In general, I think this is a nice tutorial to gaussian processes and actually explains them quite well. 
+\par
+pg 374 It offers a very nice deconstruction of the GP uncertainty and how each feature of the problem contributes to the model’s extrinsic uncertainty - A very mechanistic descp
+\par
+Very suprising, and disturbing too. It shows here that CRN is actually a detrimental effect in the GP’s predictive power. Of course that is if we are using this structure for our noise. In our problem we just learn the common variance V
+\par
+SUMMARY:
+\par
+Paper starts with a motivator on kriking for stoch sim op problems
+\par
+Explains theory behind kriging - very old school
+\par
+Applies theory to noiseless MM1 queue model. Estimating steady state customer number at time t. Uses this to discuss how to obtain design points
+\par
+Parameter Estimation- this section is big!
+\par
+Includes the derivation and jusstification behind their variance model.
+\par
+It then goes into estimation of metamodel paramters through maximum likelihood estimation
+\par
+Finally, the experimental design is considered on how to select for points to minimise the integrated IMSE. 
+\par
+This is an important bit, and the paper provides a practical means of estimating the design points themselves and the allocation of repeat iterations. 
+\par
+The term optimal predictor, and optimal MSE, is simply the form of the MSE which reduces the MSE between observed and predicted values. 
+\par
+GREY: Can anyone help me with this trick. I am not really sure, nor do I really get what they do. 
+\par
+TAKEAWAY:
+\par
+As my problem is at the intersection of a lot of things, not only does this paper give me a good model, it also gives me a good way of thinking about stochastic simulation problems. 
+\par
+SOBOL is good, but it might be better to use Latin hypercube desing 
+\par
+That YAN thing looks useful as a proposed, superior metamodel for modelling MM1 queues. However, we should note that they say this YAN is built upon known results for MM1
+\par
+Look into ATSV - a tool for visually exploring a fitted metamodel surface. We do this stuff manually with our contour plots.},
+  file = {C:\Users\newtonh3\Zotero\storage\QR6GW4V4\Ankenman et al. - 2010 - Stochastic Kriging for Simulation Metamodeling.pdf}
+}
+
+@article{hongDiscreteOptimizationSimulation2006,
+  title = {Discrete {{Optimization}} via {{Simulation Using COMPASS}}},
+  author = {Hong, L. Jeff and Nelson, Barry L.},
+  date = {2006-02},
+  journaltitle = {Operations Research},
+  volume = {54},
+  number = {1},
+  pages = {115--129},
+  issn = {0030-364X, 1526-5463},
+  doi = {10.1287/opre.1050.0237},
+  url = {https://pubsonline.informs.org/doi/10.1287/opre.1050.0237},
+  urldate = {2026-06-04},
+  abstract = {We propose an optimization-via-simulation algorithm, called COMPASS, for use when the performance measure is estimated via a stochastic, discrete-event simulation, and the decision variables are integer ordered. We prove that COMPASS converges to the set of local optimal solutions with probability 1 for both terminating and steady-state simulation, and for both fully constrained problems and partially constrained or unconstrained problems under mild conditions.},
+  langid = {english}
+}
+
+@inproceedings{lazaro-gredillaVariationalHeteroscedasticGaussian2011,
+  title = {Variational {{Heteroscedastic Gaussian Process Regression}}},
+  booktitle = {International {{Conference}} on {{Machine Learning}}},
+  author = {Lázaro-Gredilla, Miguel and Titsias, Michalis K.},
+  date = {2011},
+  url = {https://api.semanticscholar.org/CorpusID:8740432},
+  file = {C:\Users\newtonh3\Zotero\storage\7Y6EQZRK\Lázaro-Gredilla and Titsias - 2011 - Variational Heteroscedastic Gaussian Process Regression.pdf}
+}
+
+@article{binoisHetGPHeteroskedasticGaussian2021,
+  title = {{{{\textbf{hetGP}}}} : {{Heteroskedastic Gaussian Process Modeling}} and {{Sequential Design}} in {{{\mkbibemph{R}}}}},
+  shorttitle = {{{{\textbf{hetGP}}}}},
+  author = {Binois, Mickaël and Gramacy, Robert B.},
+  date = {2021},
+  journaltitle = {J. Stat. Soft.},
+  volume = {98},
+  number = {13},
+  issn = {1548-7660},
+  doi = {10.18637/jss.v098.i13},
+  url = {http://www.jstatsoft.org/v98/i13/},
+  urldate = {2026-05-14},
+  langid = {english},
+  file = {C\:\\Users\\newtonh3\\Zotero\\storage\\CVEVYQSL\\HetGP.pdf;C\:\\Users\\newtonh3\\Zotero\\storage\\LV5RF54G\\Binois and Gramacy - 2021 - hetGP  Heteroskedastic Gaussian Process Modeling and Sequential Design in R.pdf}
+}
+
+@online{mossGIBBONGeneralpurposeInformationBased2021,
+  title = {{{GIBBON}}: {{General-purpose Information-Based Bayesian OptimisatioN}}},
+  shorttitle = {{{GIBBON}}},
+  author = {Moss, Henry B. and Leslie, David S. and Gonzalez, Javier and Rayson, Paul},
+  date = {2021-10-26},
+  eprint = {2102.03324},
+  eprinttype = {arXiv},
+  eprintclass = {cs, stat},
+  url = {http://arxiv.org/abs/2102.03324},
+  urldate = {2024-06-05},
+  abstract = {This paper describes a general-purpose extension of max-value entropy search, a popular approach for Bayesian Optimisation (BO). A novel approximation is proposed for the information gain — an information-theoretic quantity central to solving a range of BO problems, including noisy, multi-fidelity and batch optimisations across both continuous and highly-structured discrete spaces. Previously, these problems have been tackled separately within information-theoretic BO, each requiring a different sophisticated approximation scheme, except for batch BO, for which no computationally-lightweight information-theoretic approach has previously been proposed. GIBBON (General-purpose Information-Based Bayesian OptimisatioN) provides a single principled framework suitable for all the above, out-performing existing approaches whilst incurring substantially lower computational overheads. In addition, GIBBON does not require the problem’s search space to be Euclidean and so is the first high-performance yet computationally light-weight acquisition function that supports batch BO over general highly structured input spaces like molecular search and gene design. Moreover, our principled derivation of GIBBON yields a natural interpretation of a popular batch BO heuristic based on determinantal point processes. Finally, we analyse GIBBON across a suite of synthetic benchmark tasks, a molecular search loop, and as part of a challenging batch multi-fidelity framework for problems with controllable experimental noise.},
+  langid = {english},
+  pubstate = {prepublished},
+  keywords = {Computer Science - Machine Learning,Statistics - Machine Learning},
+  file = {C:\Users\newtonh3\Zotero\storage\9BDAR225\Moss et al. - 2021 - GIBBON General-purpose Information-Based Bayesian.pdf}
+}

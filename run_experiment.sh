@@ -1,15 +1,11 @@
 #!/bin/bash
 
 CONFIG=$1
-
+MACROS=$2
 echo "================================="
-echo " Running experiment: $CONFIG"
+echo " Running experiment: $CONFIG |M=$MACROS"
 echo "================================="
-
-echo "Generating Input"
-conda run -n que python input_generation.py --config "configs/$CONFIG"
-echo "done"
 
 echo "Running experiment script"
-conda run --no-capture-output -n que python -u exp_script.py --config "configs/$CONFIG" | tee "logs/$CONFIG".log
+conda run --no-capture-output -n bo_prime python -u exp_script.py --config "configs/$CONFIG.yml" --n_macros $MACROS | tee "logs/$CONFIG".log
 echo "done"

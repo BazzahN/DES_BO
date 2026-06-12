@@ -668,6 +668,109 @@ class experiment_handler:
         self.m = 0
     
     #TODO Import method to run at an indexed macroreplication
+    def run_B_BO_iters(self,
+                       B,
+                       train_x,
+                       train_n,
+                       train_y,
+                       train_sigma2,
+                       rng_state):
+        
+        
+
+        #Details on the 0th iteration
+        #Set Experiment seed
+        rng_state = rng_state.byte()
+        self.target.update_rng_state(rng_state)
+        
+        #Obtain model and initial evaluations
+        model, output_handle,hyperparamaters = self.model_call(train_x,train_n,train_y,train_sigma2)
+        
+        if self.troubleshoot:
+            export_hyperparamaters(path=self.additional_paramaters['path'],
+                                   acqf_name=self.additional_paramaters['acqf_name'],
+                                   run_params={"m":self.m,"t":0},
+                                   hyperparamaters=hyperparamaters)
+
+            prediction_plotter(train_x=train_x,
+                                train_y=train_y,
+                                n_grid=self.additional_paramaters['n_grid'],
+                                model=model,
+                                outcome_transform=output_handle,
+                                acqf_name=self.additional_paramaters['acqf_name'],
+                                path=self.additional_paramaters['path'],
+                                run_params = {"m":self.m,"t":0},
+                            #    hyperparamaters=hyperparamaters,
+                                )
+                
+        
+        #Best f_acqf
+        x_strs, f_strs = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
+
+        cumulative_n = 0
+        t = 1
+        print(f"Available Budget: {B}")
+        while(cumulative_n < B):
+
+            print(f'Starting iter {t} w/ cumulative n = {cumulative_n}...',flush=True)
+       
+            #Stores previous observations to quiclky determine candidate
+            train_y_back = train_y
+            
+            #Runs single iteration of BO
+            model,AF,train_x,train_n,train_y,train_sigma2,output_handle,hyperparamaters = self.BO_handler(model,
+                                                                                                            train_x,
+                                                                                                            train_n,
+                                                                                                            train_y,
+                                                                                                            train_sigma2,
+                                                                                                            self.target,
+                                                                                                            output_handle)   
+            
+
+            if self.troubleshoot:
+                new_id = train_y.shape[0] - train_y_back.shape[0]
+
+                candidates_x = train_x[-new_id:]
+                candidates_y = train_y[-new_id:]
+                
+                # train_x_in = train_x[:new_id]
+                # train_y_in = train_y[:new_id]
+                export_hyperparamaters(path=self.additional_paramaters['path'],
+                                       acqf_name=self.additional_paramaters['acqf_name'],
+                                       run_params={"m":self.m,"t":t},
+                                       hyperparamaters=hyperparamaters)
+                prediction_plotter(train_x=train_x,
+                                    train_y=train_y,
+                                    n_grid=self.additional_paramaters['n_grid'],
+                                    model=model,
+                                    outcome_transform=output_handle,
+                                    acqf_name=self.additional_paramaters['acqf_name'],
+                                    path=self.additional_paramaters['path'],
+                                    candidates={"x":candidates_x,"y":candidates_y},
+                                    run_params = {"m":self.m,"t":t},
+                                #    hyperparamaters=hyperparamaters,
+                                )
+                    
+                acqf_plotter(n_grid=self.additional_paramaters['n_grid'],
+                             acq_func=AF,
+                             acqf_name=self.additional_paramaters['acqf_name'],
+                             path=self.additional_paramaters['path'],
+                             run_params={"m":self.m,"t":t}) 
+                
+            
+            
+            #Best f_acqf
+            x_best, f_best_SEI = get_best_f_SEI(model,bounds=self.bounds,output_transform=output_handle)
+            print(f"[OUT] x optim: {x_best.item()}")
+            print(f"[OUT] f optim: {f_best_SEI.item()}")
+
+            #Append best evals to the list
+            x_strs = torch.cat([x_strs,x_best])
+            f_strs = torch.cat([f_strs,f_best_SEI])
+           
+            
+        return train_x,train_n,train_y,train_sigma2,x_strs,f_strs
+
     def run_T_BO_iters(self,T,
                             train_x,
                             train_n,
@@ -744,14 +847,13 @@ class experiment_handler:
                                     run_params = {"m":self.m,"t":t},
                                 #    hyperparamaters=hyperparamaters,
                                 )
-
-                #TODO No multiple replication version
+                    
                 acqf_plotter(n_grid=self.additional_paramaters['n_grid'],
                              acq_func=AF,
                              acqf_name=self.additional_paramaters['acqf_name'],
                              path=self.additional_paramaters['path'],
                              run_params={"m":self.m,"t":t}) 
-                #TODO Insert hyperparam exporter here 
+                
             
             
             #Best f_acqf
