@@ -454,6 +454,117 @@ class BODES_IG(MaxValueBase):
         # acq = acq.mean(dim=0)
         return acq #shape out [k]
 
+
+    def replicate_acqf(self, X: Tensor, N: Tensor) -> Tensor:
+        r"""Compute max-value entropy at the design points `X`.
+
+        Args:
+            X: A `1 x 1 x d`-dim Tensor of `batch_shape` t-batches
+                with `1` `d`-dim design points each.
+            N: A 50 x 1 x 1 Tensor of replications
+
+        Returns:
+            A `batch_shape`-dim Tensor of MVE values at the given design points `X`.
+        """
+        ##Marshall input
+        #print(f"acqf X: {X.shape}")
+        #Input is [k,1,2] or [k,1,d+1]
+       
+        # Compute the posterior of both noise and latent model
+        posterior_f = self.model_f_posterior(
+            X=X.unsqueeze(-3),
+            observation_noise=False,
+            posterior_transform=self.posterior_transform,
+        )
+        posterior_eps = self.model_eps_posterior(
+            X=X.unsqueeze(-3),#make [k,1,1,1]
+            observation_noise=False,
+            posterior_transform=self.posterior_transform,
+
+        )
+        #Calculate predicted variance \sigma_eps^2
+        
+        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1)  # make [k,1]
+        sigma_2_eps_var = posterior_eps.variance.clamp_min(CLAMP_LB).view_as(sigma_2_eps)
+        
+        ## Transform predicted variance
+        if type(self.output_transform) is dict:
+            
+            sigma_2_eps, sigma_2_eps_var = _transform_GP(
+                sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+            )
+            sigma_2_eps = (
+                _inverse_log_transform(
+                    sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+                )
+                * self.output_transform['f'].sig_std
+            )
+        else:
+            sigma_2_eps = (
+                _inverse_log_transform(sigma_2_eps, sigma_2_eps_var, self.output_transform)
+                * self.output_transform.sig_std
+            )
+
+        # Calculate predicted mean
+        mean_f = posterior_f.mean.squeeze(-1).squeeze(-1)
+        sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
+        
+        ##transform predicted mean
+        
+        if type(self.output_transform) is dict:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform['f'])
+        else:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform)
+        
+        sigma_f = sigma_2_f.sqrt()
+
+        
+        # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
+        
+        normal = torch.distributions.Normal(
+            torch.zeros(1, device=X.device, dtype=X.dtype),
+            torch.ones(1, device=X.device, dtype=X.dtype),
+        )
+
+        # prepare max value quantities required by GIBBON
+        mvs = torch.transpose(self.posterior_max_values, 0, 1)
+        
+        ##Transform max value quantities
+        if type(self.output_transform) is dict:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform['f'])
+        else:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform)
+        
+        # print("mvs shap is",mvs.shape)
+        # print("mean_f shap is",mean_f.shape)
+
+        # 1 x s_M
+        normalized_mvs = (mvs - mean_f) / sigma_f
+        # batch_shape x s_M
+
+        cdf_mvs = normal.cdf(normalized_mvs).clamp_min(CLAMP_LB)
+        pdf_mvs = torch.exp(normal.log_prob(normalized_mvs))
+        ratio = pdf_mvs / cdf_mvs
+        check_no_nans(ratio)
+
+        # prepare squared correlation between current and target fidelity
+        rho_sq = N * sigma_2_f / (sigma_2_eps + N * sigma_2_f)
+
+        # batch_shape x 1
+        check_no_nans(rho_sq)
+
+        # calculate quality contribution to the GIBBON acquisition function
+        inner_term = 1 - rho_sq * ratio * (normalized_mvs + ratio)
+        # print(f'The inner term is {rho}')
+        acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
+        # average over posterior max samples
+        costs = self.cost_model(N.squeeze(-1))
+        acq = acq.mean(dim=1) * costs
+        
+        #Average over fantasies
+        # acq = acq.mean(dim=0)
+        return acq #shape out [k]
+
     def _compute_information_gain(
         self, X: Tensor, mean_M: Tensor, variance_M: Tensor, covar_mM: Tensor
     ) -> Tensor:

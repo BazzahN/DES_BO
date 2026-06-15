@@ -266,7 +266,7 @@ class HeteroscedasticBOModel(GPyTorchModel):
                                              covar_module,
                                              mean_module)
 
-        x
+      
         if likelihood is None:
             self.likelihood = HeteroscedasticGaussianLikelihood() 
         else:

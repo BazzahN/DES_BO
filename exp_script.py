@@ -34,6 +34,7 @@ def main():
     model = config["AF"]
     # Problem Constants
     T = config["T"]
+    B = config["B"]
     n_v = config["n_v"] #Number of replications for vanilla
 
     x_min = 0
@@ -145,7 +146,10 @@ def main():
         data['rng_state'] = rngs[m]
         run_experiment.m = m
         
-        out = run_experiment.run_T_BO_iters(T,**data)
+        if B is not None:
+            out = run_experiment.run_B_BO_iters(B,**data)
+        else:
+            out = run_experiment.run_T_BO_iters(T,**data)
         run_experiment.save_output(out,outdir,m=m)    
         
     print(f'....Ending Experiment: {model}....\n')
