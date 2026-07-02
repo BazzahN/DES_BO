@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--n_macros",type=int, required=True)
+    parser.add_argument("--m_min",type=int, default=0,required=False)
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -31,6 +32,7 @@ def main():
     #Step 1: Import Arguments
     #Experimental Parameters
     M = args.n_macros #Number of MacroReplications
+    m_min = args.m_min #Minimum number of macro replications
     model = config["AF"]
     # Problem Constants
     T = config["T"]
@@ -85,7 +87,7 @@ def main():
                              rng_state=torch.Generator().manual_seed(1).get_state()
                             )
 
-    if model == "IG":
+    if model in ["IG", "AEI"]:
         bounds = torch.tensor([[x_min,n_min] * 1,
                                 [x_max,n_max] * 1],
                                 dtype=torch.double,
@@ -139,7 +141,7 @@ def main():
     
     ##Run experiment
     
-    for m in range(0,M):
+    for m in range(m_min,M):
         print(f'[SIM]Starting macroreplication {m} of {M}....\n',flush=True)
         data = import_data(suffix=f"_m{m}")
         #Change internal m

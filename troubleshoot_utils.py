@@ -435,8 +435,8 @@ def acqf_plotter(n_grid,
                  acqf_name,
                  path,
                  run_params=None,
-                 #replications=st.tensor([1,5,10])
-                 replications=None
+                 replications=st.tensor([1,5,10])
+                 #replications=None
                  ):
 
     #Generate Grid

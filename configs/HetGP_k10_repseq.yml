@@ -6,14 +6,13 @@ misc:
     gamma: 0.4
 seed: 12345
 T: 25
-B: 180
 k: 10
 n: 2
-n_v: 2
+n_v: 1
 noise_function_index: 3
 test_function_index: 2
 phi: 0.4
 tau: 0.7
 b0: 1
 b1: 0.5
-AF: "IG"
+AF: "IG_SEQ"

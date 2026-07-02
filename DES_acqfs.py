@@ -130,15 +130,14 @@ class DES_EI(AnalyticAcquisitionFunction):
             A `(b1 x ... bk)`-dim tensor of Expected Improvement values at the
             given design points `X`.
         """
-        self.to(device=X.device)  # ensures buffers / parameters are on the same device
+        #self.to(device=X.device)  # ensures buffers / parameters are on the same device
       
         #TODO Implement code to account for unknown dimensions.
         N = X[...,-1] # Assumes n input is the extra dimension
         X_in = X[...,:-1]
-
-        # To keep botorch-compatible t-batch dimensions (k,1,1,1), push a singleton q dim
+                # To keep botorch-compatible t-batch dimensions (k,1,1,1), push a singleton q dim
         X_eval = X_in.unsqueeze(-3)
-
+        
         # Calculate Posterior of noise model for variance predictions
         posterior_eps = self.model_eps_posterior(
             X=X_eval, posterior_transform=self.posterior_transform, observation_noise=False,
@@ -148,6 +147,7 @@ class DES_EI(AnalyticAcquisitionFunction):
         sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1)
         sigma_2_eps_var = posterior_eps.variance.clamp_min(1e-12).view_as(sigma_2_eps)
 
+    
         ##Unstandardise Noise GP preds
         #NOTE Dirty, Evil Code
         if type(self.output_transform) is dict:
@@ -249,6 +249,7 @@ class AEI_fq(AnalyticAcquisitionFunction):
         f_q = mean - sigma
         if not self.maximize:
             f_q = -f_q
+
         return f_q.squeeze(-1)
     
 
@@ -358,7 +359,8 @@ class BODES_IG(MaxValueBase):
         else:
             N = X[...,-1] #shape [k,1]
             X_in = X[...,:-1] #shape [k,1,1]
-
+        # print("The Xl shape is: ", X.shape)
+        # print("The X_eval shape is: ", X_in.unsqueeze(-3).shape)
         # Compute the posterior of both noise and latent model
         posterior_f = self.model_f_posterior(
             X=X_in.unsqueeze(-3),

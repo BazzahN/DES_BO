@@ -1,6 +1,6 @@
 misc:
   n_grid: 200
-  troubleshoot: True
+  troubleshoot: False
   vihgp:
     iters: 800
     gamma: 0.4
@@ -16,4 +16,4 @@ phi: 0.4
 tau: 0.7
 b0: 1
 b1: 0.5
-AF: "IG"
+AF: "AEI"
