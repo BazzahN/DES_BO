@@ -328,7 +328,8 @@ def prediction_plotter(train_x,
                        path,
                        candidates=None, #dict of tensors {x:,y:}
                        hyperparamaters=None,
-                       run_params = None,):
+                       run_params = None,
+                       save_vals = True):
     
     """
     Creates a sausage plot of the supplied model and includes observations and most recent candidate point
@@ -337,6 +338,16 @@ def prediction_plotter(train_x,
     # Generate Predictions
     grid_x,pred_f,pred_sigma2_f,pred_sigma2_eps = predictor(n_grid,model,outcome_transform)
 
+    if save_vals:
+        outdir = Path(path + LOG_FNAME +"/preds")
+        if run_params is not None:
+            f_name = f"{acqf_name}_pred_{run_params['m']}_{run_params['t']}.pt"
+        else:
+            f_name = f"{acqf_name}_pred.pt"
+        st.save(pred_f,outdir / f"pred_f_{f_name}")
+        st.save(pred_sigma2_f,outdir / f"pred_sigma2_f_{f_name}")
+        st.save(pred_sigma2_eps,outdir / f"pred_sigma2_eps_{f_name}")
+        
     # TODO: Import Target from Input subdir
     test_data = get_files(path,"Input",['test_y','test_sigma2'])
     true_f = test_data['test_y']
@@ -382,7 +393,8 @@ def acqf_plot(grid_xn,
               acq_vals,
               path,
               f_name,
-              plot_title,):
+              plot_title,
+              save_vals = True):
     '''
     Plots the predicted intrinsic uncertainty (sigma^2_eps) and extrinsic uncertainty (sigma^2_f)
     of the Gaussian Process at a give iteration
@@ -427,6 +439,9 @@ def acqf_plot(grid_xn,
     #Savefig at subdir: acqs w/name: acqf_acqs_m_t
     
     plt.savefig(path / f_name, dpi=DPI, bbox_inches="tight")
+
+    if save_vals:
+        st.save(acq_vals,path / f"{f_name.split('.')[0]}.pt")
     plt.close()
     
 
