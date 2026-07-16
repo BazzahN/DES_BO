@@ -344,10 +344,11 @@ def prediction_plotter(train_x,
             f_name = f"{acqf_name}_pred_{run_params['m']}_{run_params['t']}.pt"
         else:
             f_name = f"{acqf_name}_pred.pt"
+        st.save(grid_x,outdir / f"grid_x_{f_name}")
         st.save(pred_f,outdir / f"pred_f_{f_name}")
         st.save(pred_sigma2_f,outdir / f"pred_sigma2_f_{f_name}")
         st.save(pred_sigma2_eps,outdir / f"pred_sigma2_eps_{f_name}")
-        
+
     # TODO: Import Target from Input subdir
     test_data = get_files(path,"Input",['test_y','test_sigma2'])
     true_f = test_data['test_y']
