@@ -1,8 +1,11 @@
-from exp_utils import VI_HGP,run_IG_exp_simple,get_stoch_kriging_model
+from functools import partial
+
+from exp_utils import VI_HGP,run_IG_exp_simple,get_stoch_kriging_model,get_files
 from test_utils import Target_Function,NOISE_FUNCTION_DIAL,TEST_FUNCTION_DIAL,InverseLinearCostModel
 from pathlib import Path
 import yaml
 import torch
+
 tkwargs = {
     "dtype": torch.double,# Datatype used by tensors
     "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"), # Declares the 'device' location where the Tenosrs will be stored
@@ -10,63 +13,58 @@ tkwargs = {
 
 
 #Input data
-exp_fname = "configs/" + "pilot_01_vihgp.yml"
+exp_fname = "configs/" + "HetGP_k10_reps.yml"
 
 with open(exp_fname) as f:
     config = yaml.safe_load(f)
 
-exp_name = config["experiment_name"]
-study_args = config['study']
-gen_args = config["problem"]
-# plot_args = config["plots"]
-exp_models = config["models"]
+exp_name = exp_fname.split("/")[-1].removesuffix(".yml") #Creates experiment name from suffix
+
 
 #Step 1: Import Arguments
 #Experimental Parameters
-T = study_args['T'] #Number of iterations
-M = study_args['M'] #Number of MacroReplications
+T = config['T'] #Number of iterations
 
 
 # Problem Constants
-k= gen_args["k"] #Number of points
-n= gen_args["n"] #Replications at each point
+k= config["k"] #Number of points
+n= config["n"] #Replications at each point
 
-x_min = gen_args["x_min"] 
-x_max = gen_args["x_max"] #Domain bounds
+x_min = 0
+x_max = 1
 
-n_min = gen_args["n_min"] 
-n_max = gen_args["n_max"] #Sample bounds
+n_min = 1
+n_max = 50 #Sample bounds
 
-test_function_id = gen_args["test_function_index"]
-noise_function_id = gen_args["noise_function_index"] #Function dial in test_utils
+test_function_id = config["test_function_index"]
+noise_function_id = config["noise_function_index"] #Function dial in test_utils
 
-phi = gen_args['phi']
-tau = gen_args['tau'] #Additional Noise Function Paramaters
+phi = config['phi']
+tau = config['tau'] #Additional Noise Function Paramaters
 
 
-b0 = gen_args['b0']  #Cost Function Paramaters 1/(b0+b1x)
-b1 = gen_args['b1']
+b0 = config['b0']  #Cost Function Paramaters 1/(b0+b1x)
+b1 = config['b1']
 maximise = True
 
 #Step 2: Import Data 
 #Import experiment input
 
-indir = Path(exp_name + "/Input")
-data_in = {}
-names = ['train_x','train_n','train_y','train_sigma2','rngs']
+indir = Path(exp_name + "/Data")
 
-for name in names:
-
-    load_in = torch.load(indir /  f"{name}.pt")
-    data_in[name] = load_in.to(**tkwargs)
-
+import_data = partial(get_files,
+                        indir = indir,
+                        file_names = ['train_x','train_n','train_y','train_sigma2'])
 m = 0
+
+data_in = import_data(suffix = f"_m{m}")
+
 #NOTE When we move to n dimensions this code will have to change
-train_x = data_in['train_x'][m]
-train_n = data_in['train_n'][m]
-train_y = data_in['train_y'][m]
-train_sigma2 = data_in['train_sigma2'][m]
-train_rngs = data_in['rngs'][m] 
+train_x = data_in['train_x']
+train_n = data_in['train_n']
+train_y = data_in['train_y']
+train_sigma2 = data_in['train_sigma2']
+
 
 ##Test problem and cost function
 noise_function = NOISE_FUNCTION_DIAL[noise_function_id]
@@ -87,7 +85,7 @@ bounds = torch.tensor([[x_min,n_min] * 1,
 
 
 #FIt Model to data
-VI_HGP =VI_HGP(gamma=0.4,iters=800,standardise=True,verbose=True)
+VI_HGP =VI_HGP(gamma=0.4,iters=800,standardise=False,verbose=True)
 model_call = VI_HGP.get_VI_HGP_model
 hgp_model, out_transform,hyperparamaters = model_call(train_x.flatten().unsqueeze(-1),train_n,train_y.flatten().unsqueeze(-1),train_sigma2)
 
@@ -133,12 +131,28 @@ hgp_model, out_transform,hyperparamaters = model_call(train_x.flatten().unsqueez
 Debugging: The costs are correct shape
 """
 
-from DES_acqfs import BODES_IG
-IG_exp = run_IG_exp_simple(n=2,
-                        AF=BODES_IG,
-                        model_call_func=model_call,
-                        cost_function=lin_cost_func,
-                        bounds=bounds[:,0].view(-1,1))
+from DES_acqfs import BODES_IG,MUMBO_IG
+from troubleshoot_utils import input_generator
+
+AF = MUMBO_IG(model = hgp_model,
+              cost_model=lin_cost_func,
+              output_transform=out_transform,
+              candidate_set= torch.linspace(bounds[0,0],bounds[1,0],40).unsqueeze(1))
+
+grid_xn = input_generator(100,replications=torch.tensor([1]))
+
+acqf_vals = AF(grid_xn['xn'].unsqueeze(1))
+import matplotlib.pyplot as plt
+with torch.no_grad():
+    plt.plot(grid_xn['x'],acqf_vals)
+
+
+# IG_exp = run_IG_exp_simple(n=2,
+#                             AF=MUMBO_IG,
+#                             model_call_func=model_call,
+#                             cost_function=lin_cost_func,
+#                             bounds=bounds[:,0].view(-1,1))
+
 
 
 # IG_exp_sk = run_IG_exp_itr(n=1,
@@ -149,13 +163,13 @@ IG_exp = run_IG_exp_simple(n=2,
 #                         GP='sk')
 
 # init_x = torch.linspace(0,1,500).reshape((500,1,1)).unsqueeze(-3)
-hgp_model,AF,train_x_v,train_n_v,train_y_v,train_sigma2_v,out_transform_v,hyperparamaters = IG_exp.run_iter(hgp_model,
-                                                                                                            train_x.flatten().unsqueeze(-1),
-                                                                                                            train_n,
-                                                                                                            train_y.flatten().unsqueeze(-1),
-                                                                                                            train_sigma2,
-                                                                                                            target,
-                                                                                                            out_transform)
+# hgp_model,AF,train_x_v,train_n_v,train_y_v,train_sigma2_v,out_transform_v,hyperparamaters = IG_exp.run_iter(hgp_model,
+#                                                                                                             train_x.flatten().unsqueeze(-1),
+#                                                                                                             train_n,
+#                                                                                                             train_y.flatten().unsqueeze(-1),
+#                                                                                                             train_sigma2,
+#                                                                                                             target,
+#                                                                                                             out_transform)
 
 # sk_model,sk_transform = get_stoch_kriging_model(train_x.mean(dim=0),train_n,train_y.mean(dim=0),train_y.var(dim=0))
 # sk_model,train_x_s,train_n_s,train_y_s,train_sigma2_s,out_transform_s = IG_exp_sk.run_iter(sk_model,
@@ -172,29 +186,45 @@ hgp_model,AF,train_x_v,train_n_v,train_y_v,train_sigma2_v,out_transform_v,hyperp
 # train_rngs = data_in['rngs'][m] 
 
 
-# init_x = torch.linspace(0,1,500).reshape((500,1))
+init_x = torch.linspace(0,1,100).reshape((100,1))
 # out_sk = sk_model['f'].posterior(init_x)
 # sk_mean = sk_transform['f'].unstandardise(out_sk.mean)
 
-# true_y,true_eps = target.eval_target_true(init_x)
+true_y,true_eps = target.eval_target_true(init_x)
  
 
 
-# from DES_acqfs import _inverse_log_transform,_transform_GP
-# out_hgp = hgp_model.posterior(init_x)
-# hgp_mean,hgp_var = _transform_GP(out_hgp.mean,out_hgp.variance,out_transform_v)
-# hgp_2_out = hgp_model.noise_posterior(init_x)
-# sigma_2_eps = (
-#                 _inverse_log_transform(hgp_2_out.mean, hgp_2_out.variance, out_transform_v)
-#                 * out_transform_v.sig_std
-#             )
+from DES_acqfs import _inverse_log_transform,_transform_GP
+out_hgp = hgp_model.posterior(init_x)
+hgp_mean,hgp_var = _transform_GP(out_hgp.mean,out_hgp.variance,out_transform)
+hgp_2_out = hgp_model.noise_posterior(init_x)
+sigma_2_eps = (
+                _inverse_log_transform(hgp_2_out.mean, hgp_2_out.variance, out_transform)
+                * out_transform.sig_std
+            )
 
-# import matplotlib.pyplot as plt
+
+from troubleshoot_utils import sausage_plot
+outdir = Path(exp_name + "/Plot")
+outdir.mkdir(parents=True,exist_ok=True)
+
+with torch.no_grad():
+    sausage_plot(train_x=train_x.flatten(),
+                train_y=train_y.flatten(),
+                grid_x=init_x.flatten(),
+                pred_f=hgp_mean.flatten(),
+                pred_sigma2_f=hgp_var.flatten(),
+                pred_sigma2_eps=sigma_2_eps.flatten(),
+                true_f=true_y.flatten(),
+                true_sigma2=true_eps.flatten(),
+                path = outdir,
+                f_name = "Good_plot")
+
 
 # # plt.plot(sk_mean.detach())
-# plt.plot(init_x,true_y)
-# plt.plot(init_x,hgp_mean.detach())
-# plt.plot(train_x.flatten(),train_y.flatten(),'x')
+plt.plot(init_x,true_y)
+plt.plot(init_x,hgp_mean.detach())
+plt.plot(train_x,train_y,'x')
 
 # plt.plot(init_x,true_eps)
 # plt.plot(init_x,sigma_2_eps.detach())

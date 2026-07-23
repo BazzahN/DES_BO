@@ -7,6 +7,7 @@ This includes:
 - NEI
 '''
 import torch
+from numpy import log,pi,e
 from torch import Tensor
 from botorch.acquisition import AnalyticAcquisitionFunction
 from botorch.exceptions.warnings import legacy_ei_numerics_warning
@@ -15,6 +16,7 @@ from botorch.utils.probability.utils import (
     phi,
 )
 from botorch.models.model import Model
+from scipy.integrate import simpson
 from HGP_utils import HeteroscedasticBOModel
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.utils.transforms import (
@@ -562,6 +564,243 @@ class BODES_IG(MaxValueBase):
         # average over posterior max samples
         costs = self.cost_model(N.squeeze(-1))
         acq = acq.mean(dim=1) * costs
+        
+        #Average over fantasies
+        # acq = acq.mean(dim=0)
+        return acq #shape out [k]
+
+    def _compute_information_gain(
+        self, X: Tensor, mean_M: Tensor, variance_M: Tensor, covar_mM: Tensor
+    ) -> Tensor:
+        r"""Compute GIBBON's approximation of information gain at the design points `X`.
+
+        When using GIBBON for batch optimization (i.e `q > 1`), we calculate the
+        additional information provided by adding a new candidate point to the current
+        batch of design points (`X_pending`), rather than calculating the information
+        provided by the whole batch. This allows a modest computational saving.
+
+        Args:
+            X: A `batch_shape x 1 x d`-dim Tensor of `batch_shape` t-batches
+                with `1` `d`-dim design point each.
+            mean_M: A `batch_shape x 1`-dim Tensor of means.
+            variance_M: A `batch_shape x 1`-dim Tensor of variances
+                consisting of `batch_shape` t-batches with `num_fantasies` fantasies.
+            covar_mM: A `batch_shape x num_fantasies x (1 + num_trace_observations)`
+                -dim Tensor of covariances.
+
+        Returns:
+            A `num_fantasies x batch_shape`-dim Tensor of information gains at the
+            given design points `X`.
+        """
+       
+        return print('no never')
+
+
+class MUMBO_IG(MaxValueBase):
+    r"""The acquisition function for Multi task max value bayesian Optimisation, with replication selection.
+    This formulation is quite similar to Moss et al. 2021, however, MUMBO is no the lower bound on information gain it
+    is an approximation instead.
+    """
+
+    def __init__(
+        self,
+        model, #NOTE:CHANGE: Now takes a dict: the stochastic kriging model 
+        cost_model, #Linear Cost Model
+        output_transform, #Unstandardise GP output
+        candidate_set: Tensor,
+        num_mv_samples: int = 10,
+        integration_grid_size: int = 5000,
+        hold_n: int | None = None,
+        posterior_transform: PosteriorTransform | None = None,
+        use_gumbel: bool = True,
+        maximize: bool = True,
+        X_pending: Tensor | None = None,
+        train_inputs: Tensor | None = None,
+    ) -> None:
+        r"""Lower bound max-value entropy search acquisition function (GIBBON).
+
+        Args:
+            model: dict
+                A dictionary containing the latent model 'f' and the noise model 'eps'
+            candidate_set: A `n x d` Tensor including `n` candidate points to
+                discretize the design space. Max values are sampled from the
+                (joint) model posterior over these points.
+            num_mv_samples: Number of max value samples.
+            hold_n: Ignores replication selection and keeps n at a constant value
+            posterior_transform: A PosteriorTransform. If using a multi-output model,
+                a PosteriorTransform that transforms the multi-output posterior into a
+                single-output posterior is required.
+            use_gumbel: If True, use Gumbel approximation to sample the max values.
+            maximize: If True, consider the problem a maximization problem.
+            X_pending: A `m x d`-dim Tensor of `m` design points that have been
+                submitted for function evaluation but have not yet been evaluated.
+            train_inputs: A `n_train x d` Tensor that the model has been fitted on.
+                Not required if the model is an instance of a GPyTorch ExactGP model.
+        """
+
+        model_f, model_f_posterior, model_eps_posterior = _model_type(model)
+        super().__init__(
+            model=model_f, #NOTE:CHANGE: send only the latent model to MaxValueBase
+            candidate_set=candidate_set,
+            num_mv_samples=num_mv_samples,
+            posterior_transform=posterior_transform,
+            use_gumbel=use_gumbel,
+            maximize=maximize,
+            X_pending=X_pending,
+            train_inputs=train_inputs,
+        )
+
+        self.hold_n = hold_n
+        self.integration_grid_size = integration_grid_size
+        #Assign Posteriors
+        self.model_eps_posterior = model_eps_posterior
+        self.model_f_posterior = model_f_posterior
+
+        self.output_transform = output_transform
+        self.cost_model = cost_model
+        self.set_X_pending(X_pending)
+
+    @t_batch_mode_transform(expected_q=1)
+    # @average_over_ensemble_models
+    def forward(self, X: Tensor) -> Tensor:
+        r"""Compute max-value entropy at the design points `X`.
+
+        Args:
+            X: A `batch_shape x 1 x d`-dim Tensor of `batch_shape` t-batches
+                with `1` `d`-dim design points each.
+
+        Returns:
+            A `batch_shape`-dim Tensor of MVE values at the given design points `X`.
+        """
+        ##Marshall input
+        #print(f"acqf X: {X.shape}")
+        #Input is [k,1,2] or [k,1,d+1]
+        if self.hold_n is not None:
+            N= self.hold_n*torch.ones([X.shape[0],1])
+            X_in = X
+        else:
+            N = X[...,-1] #shape [k,1]
+            X_in = X[...,:-1] #shape [k,1,1]
+        # print("The Xl shape is: ", X.shape)
+        # print("The X_eval shape is: ", X_in.unsqueeze(-3).shape)
+        # Compute the posterior of both noise and latent model
+        posterior_f = self.model_f_posterior(
+            X=X_in.unsqueeze(-3),
+            observation_noise=False,
+            posterior_transform=self.posterior_transform,
+        )
+        posterior_eps = self.model_eps_posterior(
+            X=X_in.unsqueeze(-3),#make [k,1,1,1]
+            observation_noise=False,
+            posterior_transform=self.posterior_transform,
+
+        )
+        #Calculate predicted variance \sigma_eps^2
+        
+        sigma_2_eps = posterior_eps.mean.squeeze(-1).squeeze(-1)  # make [k,1]
+        sigma_2_eps_var = posterior_eps.variance.clamp_min(CLAMP_LB).view_as(sigma_2_eps)
+        
+        ## Transform predicted variance
+        if type(self.output_transform) is dict:
+            
+            sigma_2_eps, sigma_2_eps_var = _transform_GP(
+                sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+            )
+            sigma_2_eps = (
+                _inverse_log_transform(
+                    sigma_2_eps, sigma_2_eps_var, self.output_transform['eps']
+                )
+                * self.output_transform['f'].sig_std
+            )
+        else:
+            sigma_2_eps = (
+                _inverse_log_transform(sigma_2_eps, sigma_2_eps_var, self.output_transform)
+                * self.output_transform.sig_std
+            )
+
+        # Calculate predicted mean
+        mean_f = posterior_f.mean.squeeze(-1).squeeze(-1)
+        sigma_2_f = posterior_f.variance.clamp_min(CLAMP_LB).view_as(mean_f)
+        
+        ##transform predicted mean
+        
+        if type(self.output_transform) is dict:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform['f'])
+        else:
+            mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform)
+        
+        sigma_f = sigma_2_f.sqrt()
+
+        
+        # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
+        
+        normal = torch.distributions.Normal(
+            torch.zeros(1, device=X.device, dtype=X.dtype),
+            torch.ones(1, device=X.device, dtype=X.dtype),
+        )
+
+        # prepare max value quantities required by GIBBON
+        mvs = torch.transpose(self.posterior_max_values, 0, 1)
+        
+        ##Transform max value quantities
+        if type(self.output_transform) is dict:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform['f'])
+        else:
+            mvs,_ = _transform_GP(mvs,mvs,self.output_transform)
+        
+        # print("mvs shap is",mvs.shape)
+        # print("mean_f shap is",mean_f.shape)
+  
+        # 1 x s_M
+        normalized_mvs = (mvs - mean_f) / sigma_f
+        # batch_shape x s_M
+
+        cdf_mvs = normal.cdf(normalized_mvs)
+        pdf_mvs = torch.exp(normal.log_prob(normalized_mvs))
+        check_no_nans(cdf_mvs)
+        check_no_nans(pdf_mvs)
+
+        # prepare correlation term between current and target fidelity
+        rho = torch.sqrt(N) * sigma_f / torch.sqrt(sigma_2_eps + N * sigma_2_f)
+
+        # batch_shape x 1
+        check_no_nans(rho)
+
+        #Formulate the ESG density term
+
+        ESGmean = rho * pdf_mvs / cdf_mvs
+        check_no_nans(ESGmean)
+        ESGvar = 1 - rho * ESGmean * (normalized_mvs + pdf_mvs / cdf_mvs)
+        ESGvar = ESGvar.clamp_min(CLAMP_LB)
+        check_no_nans(ESGvar)
+
+        upper_limit = ESGmean + 8 * torch.sqrt(ESGvar)
+        lower_limit = ESGmean - 8 * torch.sqrt(ESGvar)
+
+        print("upper limit shape", upper_limit.shape)
+
+        #Defining theta grid
+        t = torch.linspace(0,1,self.integration_grid_size,device=upper_limit.device,dtype=upper_limit.dtype)
+        t = t[:,None,None]
+        
+        theta = lower_limit[None,:,:] + t*(upper_limit-lower_limit)[None,:,:]
+
+        denominator = torch.sqrt(1 - rho**2)
+        pdf_theta = torch.exp(normal.log_prob(theta))
+
+        density = pdf_theta * normal.cdf((normalized_mvs - rho * theta)/denominator)/cdf_mvs
+        entropy_function = -density * torch.log(density.clamp_min(CLAMP_LB))
+
+        # with torch.no_grad():
+        approx_entropy = torch.trapezoid(entropy_function,x=theta,dim=0)
+        print("Approx_entropy", approx_entropy)
+
+
+        # average over posterior max samples
+        approx_entropy = approx_entropy.mean(dim=1)
+
+        costs = self.cost_model(N.squeeze(-1))
+        acq = (0.5*log(2*pi*e) - approx_entropy)* costs
         
         #Average over fantasies
         # acq = acq.mean(dim=0)
