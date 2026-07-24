@@ -140,6 +140,12 @@ def sausage_plot(train_x,
     """
     Given model predictions, training data, and the candidates just selected (if selected), this function creates a 
     'sausage plot' - including the posterior mean prediction, noise prediction, and model uncertainty, each to +/- 2\sigma.
+    
+    arguments
+    ---------
+    path: pathlib
+        
+
 
     """
     #Declare variables

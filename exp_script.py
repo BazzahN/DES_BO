@@ -87,7 +87,7 @@ def main():
                              rng_state=torch.Generator().manual_seed(1).get_state()
                             )
 
-    if model in ["IG", "AEI"]:
+    if model in ["IG", "AEI","MUMBO"]:
         bounds = torch.tensor([[x_min,n_min] * 1,
                                 [x_max,n_max] * 1],
                                 dtype=torch.double,

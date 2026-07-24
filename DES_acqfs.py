@@ -776,9 +776,7 @@ class MUMBO_IG(MaxValueBase):
 
         upper_limit = ESGmean + 8 * torch.sqrt(ESGvar)
         lower_limit = ESGmean - 8 * torch.sqrt(ESGvar)
-
-        print("upper limit shape", upper_limit.shape)
-
+        
         #Defining theta grid
         t = torch.linspace(0,1,self.integration_grid_size,device=upper_limit.device,dtype=upper_limit.dtype)
         t = t[:,None,None]
@@ -793,8 +791,6 @@ class MUMBO_IG(MaxValueBase):
 
         # with torch.no_grad():
         approx_entropy = torch.trapezoid(entropy_function,x=theta,dim=0)
-        print("Approx_entropy", approx_entropy)
-
 
         # average over posterior max samples
         approx_entropy = approx_entropy.mean(dim=1)
