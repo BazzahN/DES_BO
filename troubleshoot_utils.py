@@ -4,7 +4,7 @@ import torch as st
 import json
 import matplotlib.pyplot as plt
 
-DPI = 300
+DPI = 200
 FIGSIZE = (12,8) #Global figsize for variable
 LOG_FNAME = "/Log"
 
@@ -335,7 +335,7 @@ def prediction_plotter(train_x,
                        candidates=None, #dict of tensors {x:,y:}
                        hyperparamaters=None,
                        run_params = None,
-                       save_vals = True):
+                       save_vals = False):
     
     """
     Creates a sausage plot of the supplied model and includes observations and most recent candidate point
@@ -401,7 +401,7 @@ def acqf_plot(grid_xn,
               path,
               f_name,
               plot_title,
-              save_vals = True):
+              save_vals = False):
     '''
     Plots the predicted intrinsic uncertainty (sigma^2_eps) and extrinsic uncertainty (sigma^2_f)
     of the Gaussian Process at a give iteration

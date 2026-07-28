@@ -6,7 +6,7 @@ misc:
     gamma: 0.4
 seed: 12345
 T: 25
-B: 180
+B: 300
 k: 10
 n: 2
 n_v: 2

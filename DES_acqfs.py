@@ -397,6 +397,7 @@ class BODES_IG(MaxValueBase):
                 _inverse_log_transform(sigma_2_eps, sigma_2_eps_var, self.output_transform)
                 * self.output_transform.sig_std
             )
+            sigma_2_eps.clamp_min(CLAMP_LB)
 
         # Calculate predicted mean
         mean_f = posterior_f.mean.squeeze(-1).squeeze(-1)
@@ -410,7 +411,7 @@ class BODES_IG(MaxValueBase):
             mean_f,sigma_2_f = _transform_GP(mean_f,sigma_2_f,self.output_transform)
         
         sigma_f = sigma_2_f.sqrt()
-
+        sigma_eps = sigma_2_eps.sqrt()
         
         # Average over fantasies, ig is of shape `num_fantasies x batch_shape x (m)`.
         
@@ -452,7 +453,7 @@ class BODES_IG(MaxValueBase):
         acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
         # average over posterior max samples
         costs = self.cost_model(N.squeeze(-1))
-        acq = acq.mean(dim=1) * costs
+        acq = acq.mean(dim=1) * costs + sigma_f.squeeze(-1)
         
         #Average over fantasies
         # acq = acq.mean(dim=0)
@@ -609,7 +610,7 @@ class MUMBO_IG(MaxValueBase):
         output_transform, #Unstandardise GP output
         candidate_set: Tensor,
         num_mv_samples: int = 10,
-        integration_grid_size: int = 5000,
+        integration_grid_size: int = 2500,
         hold_n: int | None = None,
         posterior_transform: PosteriorTransform | None = None,
         use_gumbel: bool = True,

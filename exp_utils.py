@@ -1039,7 +1039,7 @@ def GP_dial(gp_name,add_args):
 
         vi_hgp = VI_HGP(gamma=add_args['gamma'],
                         iters = add_args['iters'],
-                        standardise=True,
+                        standardise=False,
                         verbose=True)
         return vi_hgp.get_VI_HGP_model
     else:
