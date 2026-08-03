@@ -87,17 +87,18 @@ def main():
                              rng_state=torch.Generator().manual_seed(1).get_state()
                             )
 
-    if model in ["IG", "AEI","MUMBO"]:
-        bounds = torch.tensor([[x_min,n_min] * 1,
-                                [x_max,n_max] * 1],
-                                dtype=torch.double,
-                                device=torch.device("cpu")) # Bounds of combined X and N space
-    else: 
+    if model in ["vanilla", "IG_norep","IG_SEQ"]:
+
         bounds = torch.tensor([[x_min] * 1,
                                 [x_max] * 1],
                                 dtype=torch.double,
                                 device=torch.device("cpu")) # Bounds of combined X and N space
-   
+    else: 
+        
+        bounds = torch.tensor([[x_min,n_min] * 1,
+                                [x_max,n_max] * 1],
+                                dtype=torch.double,
+                                device=torch.device("cpu")) # Bounds of combined X and N space
     #Step 4: Execute experiments
 
     outdir = Path(exp_name + "/Data")

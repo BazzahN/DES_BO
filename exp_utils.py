@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 from test_utils import TEST_FUNCTION_DIAL,NOISE_FUNCTION_DIAL,InverseLinearCostModel
-from DES_acqfs import DES_EI, AEI_fq,BODES_IG,MUMBO_IG,_model_type
+from DES_acqfs import DES_EI, AEI_fq,BODES_IG,MUMBO_IG,_model_type, ALTLB_IG
 from troubleshoot_utils import prediction_plotter, acqf_plotter, get_hypers_vihgp,export_hyperparamaters
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
@@ -1018,6 +1018,9 @@ IG = partial(run_IG_exp_itr,
 IG_M = partial(run_IG_exp_itr,
                AF=MUMBO_IG)
 
+IG_ALT = partial(run_IG_exp_itr,
+                 AF=ALTLB_IG)
+
 IG_NOREP = partial(run_IG_exp_simple,
                    AF=BODES_IG,
                    )
@@ -1050,5 +1053,6 @@ EXPERIMENTS = {'vanilla':VANILLA,
                'AEI': AEI,
                'IG':IG,
                'MUMBO':IG_M,
+               'IG_ALT':IG_ALT,
                'IG_norep':IG_NOREP,
                'IG_SEQ':IG_SEQ}
