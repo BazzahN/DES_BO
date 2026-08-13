@@ -16,4 +16,4 @@ phi: 0.4
 tau: 0.7
 b0: 1
 b1: 0.5
-AF: "IG"
+AF: "IG_ALT"

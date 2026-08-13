@@ -477,8 +477,8 @@ class run_IG_exp_itr:
                  model_call_func,
                  cost_function,
                  bounds,
-                 num_mv_samples = 10,
-                 set_size = 10,
+                 num_mv_samples = 20,
+                 set_size = 100,
                  GP= "sk"
                  ):
 
@@ -743,6 +743,7 @@ class experiment_handler:
                                 acqf_name=self.additional_paramaters['acqf_name'],
                                 path=self.additional_paramaters['path'],
                                 run_params = {"m":self.m,"t":0},
+                                save_vals = self.additional_paramaters['save_vals'],
                             #    hyperparamaters=hyperparamaters,
                                 )
                 
@@ -791,6 +792,7 @@ class experiment_handler:
                                     path=self.additional_paramaters['path'],
                                     candidates={"x":candidates_x,"y":candidates_y},
                                     run_params = {"m":self.m,"t":t},
+                                    save_vals = self.additional_paramaters['save_vals'],
                                 #    hyperparamaters=hyperparamaters,
                                 )
                     
@@ -798,7 +800,8 @@ class experiment_handler:
                              acq_func=AF,
                              acqf_name=self.additional_paramaters['acqf_name'],
                              path=self.additional_paramaters['path'],
-                             run_params={"m":self.m,"t":t}) 
+                             run_params={"m":self.m,"t":t},
+                             save_vals = self.additional_paramaters['save_vals']) 
                 
             
             
@@ -1042,7 +1045,7 @@ def GP_dial(gp_name,add_args):
 
         vi_hgp = VI_HGP(gamma=add_args['gamma'],
                         iters = add_args['iters'],
-                        standardise=False,
+                        standardise=True,
                         verbose=True)
         return vi_hgp.get_VI_HGP_model
     else:

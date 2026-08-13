@@ -10,8 +10,8 @@ B: 180
 k: 10
 n: 2
 n_v: 2
-noise_function_index: 3
-test_function_index: 2
+noise_function_index: 5
+test_function_index: 3
 phi: 0.4
 tau: 0.7
 b0: 1

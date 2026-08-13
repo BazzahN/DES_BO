@@ -123,7 +123,8 @@ def main():
                             GP=GP_arg)
     add_params = {"path":exp_name,
                   "acqf_name":model,
-                  "n_grid":n_grid} #For storage of additional information
+                  "n_grid":n_grid,
+                  "save_vals":True} #For storage of additional information
         
     #Automatically switch off troubleshoot if vanilla supplied
     if model == "vanilla":

@@ -335,7 +335,7 @@ def prediction_plotter(train_x,
                        candidates=None, #dict of tensors {x:,y:}
                        hyperparamaters=None,
                        run_params = None,
-                       save_vals = False):
+                       save_vals = True):
     
     """
     Creates a sausage plot of the supplied model and includes observations and most recent candidate point
@@ -401,7 +401,7 @@ def acqf_plot(grid_xn,
               path,
               f_name,
               plot_title,
-              save_vals = False):
+              save_vals = True):
     '''
     Plots the predicted intrinsic uncertainty (sigma^2_eps) and extrinsic uncertainty (sigma^2_f)
     of the Gaussian Process at a give iteration
@@ -457,13 +457,15 @@ def acqf_plotter(n_grid,
                  acqf_name,
                  path,
                  run_params=None,
-                 replications=st.tensor([1,5,10])
+                 replications=st.tensor([1,5,10]),
+                 save_vals = True,
                  #replications=None
                  ):
 
     #Generate Grid
     grid_xn = input_generator(n_grid,replications=replications)
-    
+    mvs = acq_func.posterior_max_values
+    print(f"Posterior max values: {mvs}")
     #Obtain acqf values
     if replications is not None:
         acq_vals = acq_func(grid_xn['xn'].unsqueeze(1))
@@ -472,6 +474,7 @@ def acqf_plotter(n_grid,
         acq_vals = acq_func(grid_xn.unsqueeze(1))
 
     plot_title = "acq vals"
+    
 
     if run_params is not None:
         plot_title = plot_title + f"|m={run_params['m']}|t={run_params['t']}|"
@@ -480,11 +483,13 @@ def acqf_plotter(n_grid,
         f_name = f"{acqf_name}_acqf.png"
 
     outdir = Path(path + LOG_FNAME +"/acqs")
-
+    if save_vals:
+        st.save(mvs,outdir / f"{f_name.split('.')[0]}_mvs.pt")
     #Plot and save acq fig
     acqf_plot(grid_xn=grid_xn,
               acq_vals=acq_vals,
               path=outdir,
               f_name = f_name,
-              plot_title=plot_title
+              plot_title=plot_title,
+              save_vals = save_vals
               )

@@ -453,9 +453,9 @@ class BODES_IG(MaxValueBase):
         acq = -0.5 * inner_term.clamp_min(CLAMP_LB).log()
         # average over posterior max samples
         costs = self.cost_model(N.squeeze(-1))
-        acq = acq.mean(dim=1) * costs + 0.5* torch.log(2*pi*e*sigma_2_f.squeeze(-1))
+        acq = acq.mean(dim=1) * costs 
         # acq = acq.mean(dim=1) * costs + sigma_f.squeeze(-1)
-        
+        #+ 0.5* torch.log(2*pi*e*sigma_2_f.squeeze(-1))
         #Average over fantasies
         # acq = acq.mean(dim=0)
         return acq #shape out [k]
@@ -545,6 +545,7 @@ class BODES_IG(MaxValueBase):
         # print("mean_f shap is",mean_f.shape)
 
         # 1 x s_M
+        #mvs = torch.tensor(0.434401,device=X.device,dtype=X.dtype).reshape(1,1)
         normalized_mvs = (mvs - mean_f) / sigma_f
         # batch_shape x s_M
 
@@ -623,10 +624,10 @@ class ALTLB_IG(MaxValueBase):
         cost_model, #Linear Cost Model
         output_transform, #Unstandardise GP output
         candidate_set: Tensor,
-        num_mv_samples: int = 10,
+        num_mv_samples: int = 20,
         hold_n: int | None = None,
         posterior_transform: PosteriorTransform | None = None,
-        use_gumbel: bool = True,
+        use_gumbel: bool = False,
         maximize: bool = True,
         X_pending: Tensor | None = None,
         train_inputs: Tensor | None = None,
@@ -766,6 +767,8 @@ class ALTLB_IG(MaxValueBase):
         # print("mean_f shap is",mean_f.shape)
   
         # 1 x s_M
+        # print("The mvs are: ",mvs)
+        #mvs = torch.tensor(0.434401,device=X.device,dtype=X.dtype).reshape(1,1)
         normalized_mvs = (mvs - mean_f) / sigma_f
         # batch_shape x s_M
 
@@ -784,20 +787,21 @@ class ALTLB_IG(MaxValueBase):
         first_term = (sigma_2_eps/(sigma_2_eps+ sigma_2_f)).log()
         second_term = -(sigma_2_eps/(sigma_2_eps+ sigma_2_f * N)).log()
 
-        # calculate quality contribution to the GIBBON acquisition function
+         # calculate quality contribution to the GIBBON acquisition function
         inner_term = 1 - rho_sq * ratio * (normalized_mvs + ratio)
         # print(f'The inner term is {rho}')
         third_term = -inner_term.clamp_min(CLAMP_LB).log()
-
+    
         # average over posterior max samples
-        acq = N*(third_term.mean(dim=1) +first_term) + second_term
-
+        acq = N*(third_term.mean(dim=1,keepdim=True) +first_term) + second_term 
+   
         #Include costs
-        costs = self.cost_model(N.squeeze(-1))
-        acq = acq * costs * 0.5
+        costs = self.cost_model(N)
+        acq = acq * costs * 0.5 
+        #0.5*torch.log(2*pi*e*sigma_2_f)
 
-
-        return acq #shape out [k]
+   
+        return acq.squeeze(-1) #shape out [k]
 
     def _compute_information_gain(
         self, X: Tensor, mean_M: Tensor, variance_M: Tensor, covar_mM: Tensor
